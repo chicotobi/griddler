@@ -13,8 +13,6 @@
 
 #include "omp.h"
 
-#define BOOL char
-
 using namespace std;
 
 template<class V>
@@ -25,7 +23,7 @@ public:
   size_t dimY;
   V& operator()(size_t i, size_t j) {
     if(i>=dimX || j>=dimY) {
-      cout << "Error in operator(): i or j >= dimX or dimY." << endl;
+      wcout << "Error in operator(): i or j >= dimX or dimY." << endl;
       exit(1);
     }
     return vec[i*dimY+j];
@@ -34,53 +32,6 @@ public:
   Matrix(size_t dimX_, size_t dimY_) : dimX(dimX_), dimY(dimY_) {
     vec.resize(dimX*dimY);
   }
-  Matrix operator &(Matrix mat) const {
-    Matrix ans = *this;
-    for(size_t i=0;i<vec.size();i++)
-      ans.vec[i] = ((bool) this->vec[i]) & ((bool) mat.vec[i]);
-    return ans;
-  }
-  Matrix operator!() const {
-    Matrix ans = *this;
-    for(size_t i=0;i<vec.size();i++)
-      ans.vec[i] = (!(bool) this->vec[i]);
-    return ans;
-  }
-  void transpose() {
-    Matrix newMat(dimY,dimX);
-    for(size_t i=0;i<dimX;i++)
-      for(size_t j=0;j<dimY;j++)
-        newMat(j,i) = this->operator()(i,j);
-    swap(newMat,*this);
-  }
-  void setFalse() {
-    for(size_t i=0;i<dimX;i++)
-      for(size_t j=0;j<dimY;j++)
-        this->operator ()(i,j) = 0;
-  }
-  void setTrue() {
-    for(size_t i=0;i<dimX;i++)
-      for(size_t j=0;j<dimY;j++)
-        this->operator ()(i,j) = 1;
-  }
-  void setTrue(size_t i, Matrix<BOOL> vecJ) {
-    if(i>=dimX) {
-      cout << "Error in setTrue: i>dimX" << endl;
-      exit(1);
-    }
-    for(size_t j=0;j<dimY;j++)
-      if (vecJ(0,j))
-        this->operator ()(i,j) = true;
-  }
-  void setFalse(size_t i, Matrix<BOOL> vecJ) {
-    if(i>=dimX) {
-      cout << "Error in setFalse: i>dimX" << endl;
-      exit(1);
-    }
-    for(size_t j=0;j<dimY;j++)
-      if (vecJ(0,j)) this->operator ()(i,j) = false;
-  }
-
   void write(std::string path) const {
     ofstream outFILE(path, ios::out | ofstream::binary);
     outFILE.write(reinterpret_cast<const char *>(&dimX), sizeof(size_t));
@@ -96,126 +47,13 @@ public:
     while( inFILE.read(reinterpret_cast<char *>(&v), sizeof(V)))
       vec.push_back(v);
   }
-  bool any() {
-    for(size_t i=0;i<vec.size();i++)
-      if (vec[i]) return true;
-    return false;
-  }
-  bool all() {
-    for(size_t i=0;i<vec.size();i++)
-      if (!((bool)vec[i])) return false;
-    return true;
-  }
-  Matrix<BOOL> any(size_t ori) {
-    if (ori == 1) {
-      Matrix<BOOL> ans(dimX,1);
-      ans.setFalse();
-      for(size_t i=0;i<dimX;i++)
-        for(size_t j=0;j<dimY;j++)
-          if(this->operator ()(i,j)) ans(i,0) = true;
-      return ans;
-    } else if (ori == 0) {
-      Matrix<BOOL> ans(1,dimY);
-      ans.setFalse();
-      for(size_t i=0;i<dimX;i++)
-        for(size_t j=0;j<dimY;j++)
-          if(this->operator ()(i,j)) ans(0,j) = true;
-      return ans;
-    }
-    return Matrix<BOOL>();
-  }
-  Matrix<BOOL> all(size_t ori) {
-    if (ori == 1) {
-      Matrix<BOOL> ans(dimX,1);
-      ans.setTrue();
-      for(size_t i=0;i<dimX;i++)
-        for(size_t j=0;j<dimY;j++)
-          if(!((bool)this->operator ()(i,j))) ans(i,0) = false;
-      return ans;
-    } else if (ori == 0) {
-      Matrix<BOOL> ans(1,dimY);
-      ans.setTrue();
-      for(size_t i=0;i<dimX;i++)
-        for(size_t j=0;j<dimY;j++)
-          if(!((bool)this->operator ()(i,j))) ans(0,j) = false;
-      return ans;
-    }
-    return Matrix<BOOL>();
-  }
-
-  bool anyInRow(size_t line) {
-    for(size_t j=0;j<dimY;j++)
-      if (this->operator()(line,j))
-        return true;
-    return false;
-  }
-  std::vector<V> getRow(size_t line) {
-    std::vector<V> ans;
-    for(size_t j=0;j<dimY;j++)
-      ans.push_back(this->operator ()(line,j));
-    return ans;
-  }
-  void keepRows(Matrix<BOOL> idxKeep) {
-    //Memory check
-    size_t lines = 0;
-    for(size_t i=0;i<dimX;i++)
-      if(idxKeep(i,0))
-        lines++;
-    Matrix<BOOL> newMat(lines,dimY);
-    lines = 0;
-    for(size_t i=0;i<dimX;i++)
-      if(idxKeep(i,0)) {
-        for(size_t j=0;j<dimY;j++)
-          newMat(lines,j) = this->operator()(i,j);
-        lines++;
-      }
-    swap(newMat,*this);
-  }
-  void keepFirstLine() {
-    Matrix<BOOL> newMat(1,dimY);
-    for(size_t j=0;j<dimY;j++)
-      newMat(0,j) = this->operator()(0,j);
-    swap(newMat,*this);
-  }
-  void dropFirstLine() {
-    Matrix<BOOL> newMat(dimX-1,dimY);
-    for(size_t i=1;i<dimX;i++)
-      for(size_t j=0;j<dimY;j++)
-        newMat(i-1,j) = this->operator()(i,j);
-    swap(newMat,*this);
-  }
-  void printBoolToConsole() {
-    for(size_t i=0;i<dimX;i++) {
-      for(size_t j=0;j<dimY;j++)
-        if(this->operator ()(i,j)) {
-          //wcout << L'\u25A1';
-          cout << "x";
-        } else {
-          //wcout << L'\u25A0';
-          cout << ".";
-        }
-      wcout << endl;
-    }
-    wcout << endl;
-    wcout << endl;
-  }
-
   void printValToConsole() {
     for(size_t i=0;i<dimX;i++) {
       for(size_t j=0;j<dimY;j++)
-        cout << (int) this->operator ()(i,j) << "\t";
-      cout << endl;
+        wcout << (int) this->operator ()(i,j) << "\t";
+      wcout << endl;
     }
-    cout << endl;
-  }
-  bool operator==(Matrix<BOOL> mat) {
-    for(size_t i=0;i<dimX;i++)
-      for(size_t j=0;j<dimY;j++) {
-        bool bool1 = (bool) this->operator()(i,j);
-        bool bool2 = (bool) mat(i,j);
-        if (bool1 != bool2) return false;
-      }
-    return true;
+    wcout << endl;
   }
 };
 
@@ -226,7 +64,14 @@ public:
   size_t dimY;
   boost::dynamic_bitset<>::reference operator()(size_t i, size_t j) {
     if(i>=dimX || j>=dimY) {
-      cout << "Error in operator(): i or j >= dimX or dimY." << endl;
+      wcout << "Error in operator(): i or j >= dimX or dimY." << endl;
+      exit(1);
+    }
+    return b[i*dimY+j];
+  }
+  bool operator()(size_t i, size_t j) const {
+    if(i>=dimX || j>=dimY) {
+      wcout << "Error in operator(): i or j >= dimX or dimY." << endl;
       exit(1);
     }
     return b[i*dimY+j];
@@ -235,6 +80,34 @@ public:
   MatrixB(size_t dimX_, size_t dimY_) : dimX(dimX_), dimY(dimY_) {
     b.resize(dimX*dimY);
   }
+
+  //operators
+  MatrixB operator &(MatrixB mat) const {
+    MatrixB ans = *this;
+    for(size_t i=0;i<b.size();i++)
+      ans.b[i] = this->b[i] & mat.b[i];
+    return ans;
+  }
+  MatrixB operator ^(MatrixB mat) const {
+    MatrixB ans = *this;
+    for(size_t i=0;i<b.size();i++)
+      ans.b[i] = this->b[i] ^ mat.b[i];
+    return ans;
+  }
+  MatrixB operator!() const {
+    MatrixB ans = *this;
+    for(size_t i=0;i<b.size();i++)
+      ans.b[i] = !this->b[i];
+    return ans;
+  }
+  bool operator==(MatrixB mat) const {
+    for(size_t i=0;i<dimX;i++)
+      for(size_t j=0;j<dimY;j++)
+        if (this->operator()(i,j) != mat(i,j)) return false;
+    return true;
+  }
+
+  //write-load-routines
   void write(std::string path) const {
     ofstream outFILE(path, ios::out | ofstream::binary);
     outFILE.write(reinterpret_cast<const char *>(&dimX), sizeof(size_t));
@@ -248,37 +121,106 @@ public:
     b.resize(dimX*dimY);
     inFILE >> b;
   }
-  void keepRows(Matrix<BOOL> idxKeep) {
-    //Memory check
-    size_t lines = 0;
-    for(size_t i=0;i<dimX;i++)
-      if(idxKeep(i,0))
-        lines++;
-    MatrixB newMat(lines,dimY);
-    lines = 0;
-    for(size_t i=0;i<dimX;i++)
-      if(idxKeep(i,0)) {
-        for(size_t j=0;j<dimY;j++)
-          newMat(lines,j) = this->operator()(i,j);
-        lines++;
-      }
-    swap(newMat,*this);
+  void printBoolToConsole() const {
+    setlocale(LC_ALL, "");
+    for(size_t i=0;i<dimX;i++) {
+      for(size_t j=0;j<dimY;j++)
+        if(this->operator ()(i,j)) {
+          wcout << L'\u2588';
+        } else {
+          wcout << " ";
+        }
+      wcout << endl;
+    }
+    wcout << endl;
   }
-  Matrix<BOOL> allInColumns() {
-    Matrix<BOOL> ans(1,dimY);
+
+  //set-routines
+  void setFalse() {
+    for(size_t i=0;i<b.size();i++)
+      b[i] = false;
+  }
+  void setTrue() {
+    for(size_t i=0;i<b.size();i++)
+      b[i] = true;
+  }
+  void setTrue(size_t i, MatrixB vecJ) {
+    for(size_t j=0;j<dimY;j++)
+      if (vecJ(0,j))
+        this->operator ()(i,j) = true;
+  }
+  void setFalse(size_t i, MatrixB vecJ) {
+    for(size_t j=0;j<dimY;j++)
+      if (vecJ(0,j))
+        this->operator ()(i,j) = false;
+  }
+
+  //any-all-routines
+  bool any() const {
+    for(size_t i=0;i<b.size();i++)
+      if (b[i]) return true;
+    return false;
+  }
+  bool all() const {
+    for(size_t i=0;i<b.size();i++)
+      if (!b[i]) return false;
+    return true;
+  }
+  MatrixB allInColumns() const {
+    MatrixB ans(1,dimY);
     ans.setTrue();
     for(size_t i=0;i<dimX;i++)
       for(size_t j=0;j<dimY;j++)
         if(!((bool)this->operator ()(i,j))) ans(0,j) = false;
     return ans;
   }
-  Matrix<BOOL> anyInColumns() {
-    Matrix<BOOL> ans(1,dimY);
+  MatrixB allInRows() const {
+    MatrixB ans(dimX,1);
+    ans.setTrue();
+    for(size_t i=0;i<dimX;i++)
+      for(size_t j=0;j<dimY;j++)
+        if(!((bool)this->operator ()(i,j))) ans(i,0) = false;
+    return ans;
+  }
+  MatrixB anyInColumns() const {
+    MatrixB ans(1,dimY);
     ans.setFalse();
     for(size_t i=0;i<dimX;i++)
       for(size_t j=0;j<dimY;j++)
         if(this->operator ()(i,j)) ans(0,j) = true;
     return ans;
+  }
+  MatrixB anyInRows() const {
+    MatrixB ans(dimX,1);
+    ans.setFalse();
+    for(size_t i=0;i<dimX;i++)
+      for(size_t j=0;j<dimY;j++)
+        if(this->operator ()(i,j)) ans(i,0) = true;
+    return ans;
+  }
+  bool anyInRow(size_t line) const {
+    for(size_t j=0;j<dimY;j++)
+      if (this->operator()(line,j))
+        return true;
+    return false;
+  }
+
+  //complex logical routines
+  void dropRows(MatrixB idxDrop) {
+    //Memory check
+    size_t lines = dimX;
+    for(size_t i=0;i<dimX;i++)
+      if(idxDrop(i,0))
+        lines--;
+    MatrixB newMat(lines,dimY);
+    lines = 0;
+    for(size_t i=0;i<dimX;i++)
+      if(!(idxDrop(i,0))) {
+        for(size_t j=0;j<dimY;j++)
+          newMat(lines,j) = this->operator()(i,j);
+        lines++;
+      }
+    swap(newMat,*this);
   }
   void keepFirstLine() {
     MatrixB newMat(1,dimY);
@@ -292,6 +234,81 @@ public:
       for(size_t j=0;j<dimY;j++)
         newMat(i-1,j) = this->operator()(i,j);
     swap(newMat,*this);
+  }
+  void transpose() {
+    MatrixB newMat(dimY,dimX);
+    for(size_t i=0;i<dimX;i++)
+      for(size_t j=0;j<dimY;j++)
+        newMat(j,i) = this->operator()(i,j);
+    swap(newMat,*this);
+  }
+};
+
+class Line {
+public:
+  MatrixB possibleCombinations;
+  MatrixB active;
+  Line() {}
+  boost::dynamic_bitset<>::reference operator()(size_t i, size_t j) {
+    if (active(i,0)) {
+      return possibleLines(i,j);
+    } else {
+      wcout << "Not active!" << endl;
+      exit(1);
+    }
+  }
+  bool operator()(size_t i, size_t j) const {
+    if (active(i,0)) {
+      return possibleLines(i,j);
+    } else {
+      wcout << "Not active!" << endl;
+      exit(1);
+    }
+  }
+  size_t getNumberOfLines() {
+    return possibleLines.dimX;
+  }
+  size_t getNumberOfActiveLines() {
+    size_t ans = 0;
+    for(size_t i=0;i<active.dimY;i++)
+      if(active(0,i))
+        ans++;
+    return ans;
+  }
+  MatrixB allTrueInActiveColumns() const {
+    MatrixB ans(1,possibleLines.dimY);
+    ans.setTrue();
+    for(size_t i=0;i<possibleLines.dimX;i++)
+      if(active(i,0))
+        for(size_t j=0;j<possibleLines.dimY;j++)
+          if(!(possibleLines(i,j))) ans(0,j) = false;
+    return ans;
+  }
+  MatrixB allFalseInActiveColumns() const {
+    MatrixB ans(1,possibleLines.dimY);
+    ans.setTrue();
+    for(size_t i=0;i<possibleLines.dimX;i++)
+      if(active(i,0))
+        for(size_t j=0;j<possibleLines.dimY;j++)
+          if(possibleLines(i,j)) ans(0,j) = false;
+    return ans;
+  }
+  void keepFirstActiveLine() {
+    size_t firstActiveIdx = 0;
+    for(size_t i=0;i<active.dimY;i++)
+      if(active(0,i)) {
+        firstActiveIdx = i;
+        break;
+      }
+    active.setFalse();
+    active(0,firstActiveIdx) = true;
+  }
+  void dropFirstActiveLine() {
+    for(size_t i=0;i<active.dimY;i++)
+      if(active(0,i)) {
+        active(0,i) = false;
+        break;
+      }
   }
 };
 
@@ -319,10 +336,11 @@ void fun_cr_comps(size_t noWhiteBlocks, size_t noWhiteSquares) {
   size_t noComp2 = alg_n_k(noWhiteSquares-1,noWhiteBlocks-2);
   size_t noComp3 = alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
   size_t noComps = noComp1 + 2*noComp2 + noComp3;
-  cout << "Starting (" << noWhiteBlocks << " " << noWhiteSquares << ") composition, this will give " << noComps << " compositions." << endl;
+  wcout << "Starting (" << noWhiteBlocks << " " << noWhiteSquares << ") composition, this will give " << noComps << " compositions." << endl;
+
   size_t i = 0;
-  Matrix<char> A(noComps,noWhiteBlocks);
-  A.setFalse();
+  Matrix<uint8_t> A(noComps,noWhiteBlocks);
+
   if (noComp1 > 0) {
     int n = noWhiteSquares;
     int k = noWhiteBlocks;
@@ -330,7 +348,7 @@ void fun_cr_comps(size_t noWhiteBlocks, size_t noWhiteSquares) {
     a[0] = n-k;
     int t = n - k;
     int h = 0;
-    for(int j=0;j<k;j++)
+    for(size_t j=0;j<noWhiteBlocks;j++)
       A(i,j) = a[j]+1;
     i++;
     while(i<noComp1) {
@@ -340,7 +358,7 @@ void fun_cr_comps(size_t noWhiteBlocks, size_t noWhiteSquares) {
       a[h-1] = 0;
       a[0] = t - 1;
       a[h]++;
-      for(int j=0;j<k;j++)
+      for(size_t j=0;j<noWhiteBlocks;j++)
         A(i,j) = a[j]+1;
       i++;
     }
@@ -352,11 +370,13 @@ void fun_cr_comps(size_t noWhiteBlocks, size_t noWhiteSquares) {
     a[0] = n-k;
     int t = n - k;
     int h = 0;
-    for(int j=0;j<k;j++)
+    for(size_t j=0;j<noWhiteBlocks-1;j++)
       A(i,j) = a[j]+1;
+    A(i,noWhiteBlocks-1) = 0;
     i++;
-    for(int j=0;j<k;j++)
-      A(i,j+1) = a[j]+1;
+    A(i,0) = 0;
+    for(size_t j=1;j<noWhiteBlocks;j++)
+      A(i,j) = a[j-1]+1;
     i++;
     while(i<noComp1+2*noComp2) {
       if (1 < t) h = 0;
@@ -365,11 +385,13 @@ void fun_cr_comps(size_t noWhiteBlocks, size_t noWhiteSquares) {
       a[h-1] = 0;
       a[0] = t - 1;
       a[h] += 1;
-      for(int j=0;j<k;j++)
+      for(size_t j=0;j<noWhiteBlocks-1;j++)
         A(i,j) = a[j]+1;
+      A(i,noWhiteBlocks-1) = 0;
       i++;
-      for(int j=0;j<k;j++)
-        A(i,j+1) = a[j]+1;
+      A(i,0) = 0;
+      for(size_t j=1;j<noWhiteBlocks;j++)
+        A(i,j) = a[j-1]+1;
       i++;
     }
   }
@@ -380,8 +402,10 @@ void fun_cr_comps(size_t noWhiteBlocks, size_t noWhiteSquares) {
     a[0] = n-k;
     int t = n - k;
     int h = 0;
-    for(int j=0;j<k;j++)
-      A(i,j+1) = a[j]+1;
+    A(i,0) = 0;
+    for(size_t j=1;j<noWhiteBlocks-1;j++)
+      A(i,j) = a[j-1]+1;
+    A(i,noWhiteBlocks-1) = 0;
     i++;
     while(i<noComp1+2*noComp2+noComp3) {
       if (1 < t) h = 0;
@@ -390,15 +414,17 @@ void fun_cr_comps(size_t noWhiteBlocks, size_t noWhiteSquares) {
       a[h-1] = 0;
       a[0] = t - 1;
       a[h] += 1;
-      for(int j=0;j<k;j++)
-        A(i,j+1) = a[j]+1;
+      A(i,0) = 0;
+      for(size_t j=1;j<noWhiteBlocks-1;j++)
+        A(i,j) = a[j-1]+1;
+      A(i,noWhiteBlocks-1) = 0;
       i++;
     }
   }
-  cout << "Finished (" << noWhiteBlocks << " " << noWhiteSquares << ") composition." << endl;
   std::stringstream ss;
   ss << "comp_" << noWhiteBlocks << "_" << noWhiteSquares << ".dat";
   A.write(ss.str());
+  wcout << "Finished (" << noWhiteBlocks << " " << noWhiteSquares << ") composition." << endl;
 }
 
 inline bool exist (const std::string& name) {
@@ -412,43 +438,46 @@ inline bool exist (const std::string& name) {
   }
 }
 
-void fun_logics_rec(Matrix<char>& sol, Matrix<char>& solSet, size_t incLevel, Matrix<MatrixB>& posSol, bool& err) {
+MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<Line>& posSol, bool& err, size_t incLevel) {
   vector<size_t> dim(2);dim[0] = sol.dimX;dim[1] = sol.dimY;
-  stringstream ind;for(size_t i=0;i<incLevel;i++) ind << "--";
-  Matrix<BOOL> solSet_old(dim[1],dim[0]);
-  solSet_old.setTrue();
+
+  MatrixB solSet_old(dim[1],dim[0]);solSet_old.setTrue();
 
   while(true) {
-    Matrix<BOOL> solSetChange = solSet & (!solSet_old);
+    MatrixB solSetChange = solSet & (!solSet_old);
     solSet_old = solSet;
-    Matrix<BOOL> sol_old = sol;
+    MatrixB sol_old = sol;
     for(size_t ori=0;ori<2;ori++) {
       for(size_t line=0;line < dim[ori];line++) {
         if (solSetChange.anyInRow(line)) {
-          size_t npSol = posSol(ori,line).dimX;
-          Matrix<BOOL> mat = Matrix<BOOL>(npSol,dim[1-ori]);
-          mat.setFalse();
-          MatrixB posSolOriLine = posSol(ori,line);
-          for(size_t j=0;j < dim[1-ori];j++) {
-            if(solSet(line,j)) {
-              bool solLineJ = sol(line,j);
-#pragma omp parallel for
-              for(size_t i=0;i < npSol ; i++) {
-                mat(i,j) = solLineJ^posSolOriLine(i,j);
+          err = true;
+          Line* posLines = &(posSol(ori,line));
+          size_t npSol = posLines.getNumberOfLines();
+          size_t dimLine = posLines.possibleLines.dimY;
+          //Define idxDrop vector, init false
+          MatrixB idxDrop(npSol,1);
+          //Loop over all compositions
+          for(size_t i=0;i<npSol;i++) {
+            if(posSol(ori,line).active(i,0)) {
+              for(size_t j=0;j < dimLine;j++) {
+                if (solSet(line,j) & (sol(line,j) ^ posSol(ori,line).possibleLines(i,j))) {
+                  posSol(ori,line).active(i,0) = false;
+                  break;
+                }
+              }
+              if(!(idxDrop(i,0))) {
+                err = false;
               }
             }
           }
-          Matrix<BOOL> idxKeep = !(mat.any(1));
-          if(!idxKeep.any()) {
-            err = true;
-            return;
+          if(err) {
+            return sol;
           }
-          posSol(ori,line).keepRows(idxKeep);
         }
-        Matrix<BOOL> v1 = posSol(ori,line).allInColumns();
+        MatrixB v1 = posSol(ori,line).allTrueInActiveColumns();
         sol.setTrue(line,v1);
         solSet.setTrue(line,v1);
-        Matrix<BOOL> v2 = !(posSol(ori,line).anyInColumns());
+        MatrixB v2 = posSol(ori,line).allTrueInActiveColumns();
         sol.setFalse(line,v2);
         solSet.setTrue(line,v2);
       }
@@ -456,44 +485,50 @@ void fun_logics_rec(Matrix<char>& sol, Matrix<char>& solSet, size_t incLevel, Ma
       solSet.transpose();
       solSetChange.transpose();
     }
-    sol.printBoolToConsole();
-    if(solSet.all())
-      return;
+    // Check if we are finished
+    if(solSet.all()) {
+      err = false;
+      return sol;
+    }
+
+    //If the latest step brought no news, make a gues (=inception level)
     if(sol_old == sol) {
-      Matrix<MatrixB> thPosSol = posSol;
-      incLevel++;
       size_t min_s = 1e6;
-      size_t minOri = 2;
-      size_t minLine = 10000;
+      size_t minOri = 0;
+      size_t minLine = 0;
       for(size_t ori=0;ori<2;ori++)  {
         for(size_t line=0;line<dim[ori];line++) {
-          if (1 < thPosSol(ori,line).dimX && thPosSol(ori,line).dimX < min_s) {
-            min_s = thPosSol(ori,line).dimX;
+          if (1 < posSol(ori,line).getNumberOfActiveLines() && posSol(ori,line).getNumberOfActiveLines() < min_s) {
+            min_s = posSol(ori,line).getNumberOfActiveLines();
             minOri = ori;
             minLine = line;
           }
         }
       }
-      thPosSol(minOri,minLine).keepFirstLine();
-      cout << ind << "Guess correct solution in O" << minOri << "L" << minLine << " of " << min_s << " solutions there." << endl;
-      Matrix<BOOL> thSol = sol;
-      Matrix<BOOL> thSolSet = solSet;
-      fun_logics_rec(thSol,thSolSet,incLevel,thPosSol,err);
-      if(err) {
-        cout << ind << "Invalid solution in O" << minOri << "L" << minLine << " found and dropped, remaining " << min_s-1 << " solutions." << endl;
-        posSol(minOri,minLine).dropFirstLine();
-        incLevel--;
+      Matrix<Line> thPosSol = posSol;
+      thPosSol(minOri,minLine).keepFirstActiveLine();
+      wstringstream ind;for(size_t i=0;i<incLevel;i++) ind << "--";
+      wcout << ind.str() << "Guess correct solution in O" << minOri << "L" << minLine << " of " << min_s << " solutions there." << endl;
+      MatrixB thSol = fun_logics_rec(sol,solSet,thPosSol,err,incLevel+1);
+      if(!err) {
+        wcout << ind.str() << "Returned from inception level " << incLevel << ". Solved!" << endl;
+        return thSol;
       } else {
-        sol = thSol;
-        cout << ind << "Returned from inception level " << incLevel << ". Solved!" << endl;
+        wcout << ind.str() << "Invalid solution in O" << minOri << "L" << minLine << " found and dropped, remaining " << min_s-1 << " solutions." << endl;
+        posSol(minOri,minLine).dropFirstActiveLine();
       }
     }
   }
 }
 
-int main() {
+int main(int argc, const char* argv[]) {
   setlocale(LC_ALL, "");
-  size_t inpNr = 41;
+  if (argc==1) {
+    wcout << "Error: No input number provided! Exiting..." << endl;
+    exit(1);
+  }
+  size_t inpNr = atoi(argv[1]);
+  wcout << "Solving input number: " << inpNr << endl;
   std::vector<std::vector<uint8_t> > H;
   std::vector<std::vector<uint8_t> > V;
   std::vector<uint8_t> tmp;
@@ -529,7 +564,7 @@ int main() {
   }
 
   //Creation
-  cout << "Creation started!" << endl;
+  wcout << "Creation started!" << endl;
   std::vector<size_t> dim(2);
   dim[0] = dimX;
   dim[1] = dimY;
@@ -545,13 +580,13 @@ int main() {
         std::vector<uint8_t> black = M[ori]->operator[](line);
         uint8_t noWhiteBlocks = black.size() + 1;
         uint8_t noWhiteSquares = dim[ori] - accumulate(black.begin(),black.end(),0);
+        size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
+        wcout << "Creating sol O" << ori << "L" << line << ", using composition (" << (int) noWhiteBlocks << " " << (int) noWhiteSquares << ") with " << noComps << " compositions." << endl;
         std::stringstream ss2;
         ss2 << "comp_" << (size_t) noWhiteBlocks << "_" << (size_t) noWhiteSquares << ".dat";
         if (!exist(ss2.str())) fun_cr_comps(noWhiteBlocks,noWhiteSquares);
-        size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
         MatrixB S(noComps,dim[ori]);
-        cout << "Creating sol O" << ori << "L" << line << ", loading combination (" << (int) noWhiteBlocks << " " << (int) noWhiteSquares << ") with " << noComps << " compositions." << endl;
-        Matrix<char> A(noComps,noWhiteBlocks);
+        Matrix<uint8_t> A(noComps,noWhiteBlocks);
         A.load(ss2.str());
         for(size_t k=0;k<noComps;k++) {
           size_t pos = 0;
@@ -562,17 +597,14 @@ int main() {
             }
           }
         }
-        cout << "Finished sol O" << ori << "L" << line << ", using combination (" << (int)  noWhiteBlocks << " " << (int)  noWhiteSquares << ") with " << noComps << " compositions." << endl;
         S.write(ss.str());
+        wcout << "Finished sol O" << ori << "L" << line << ", using composition (" << (int)  noWhiteBlocks << " " << (int)  noWhiteSquares << ") with " << noComps << " compositions." << endl;
       }
     }
   }
-
-  Matrix<BOOL> sol = Matrix<char>(dim[1],dim[0]);
-  sol.setFalse();
-  Matrix<BOOL> solSet = Matrix<char>(dim[1],dim[0]);
-  solSet.setFalse();
-  Matrix<MatrixB> posSol = Matrix<MatrixB>(2,maxDim);
+  MatrixB sol(dim[1],dim[0]);
+  MatrixB solSet(dim[1],dim[0]);
+  Matrix<Line> posSol(2,maxDim);
   for(size_t ori=0;ori<2;ori++) {
     for(size_t line=0;line < dim[1-ori];line++) {
       std::vector<uint8_t> black = M[ori]->operator[](line);
@@ -583,27 +615,24 @@ int main() {
       size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
       MatrixB S(noComps,dim[ori]);
       S.load(ss.str());
-      posSol(ori,line) = S;
+      posSol(ori,line).possibleLines = S;
+      posSol(ori,line).active = MatrixB(S.dimX,1);
+      posSol(ori,line).active.setTrue();
     }
   }
-  cout << "Creation finished!" << endl;
+  wcout << "Creation finished!" << endl;
 
   //Iteration
-  cout << "Iteration started!" << endl;
-  auto t_start = std::chrono::high_resolution_clock::now();
+  wcout << "Iteration started!" << endl;
   bool err = false;
-  size_t incLevel = 0;
-  fun_logics_rec(sol,solSet,incLevel,posSol,err);
+  auto t_start = std::chrono::high_resolution_clock::now();
+  sol = fun_logics_rec(sol,solSet,posSol,err,0);
   auto t_end = std::chrono::high_resolution_clock::now();
   double calcTime = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
-  cout << "Iteration finished!" << endl;
-  cout << "Took " << calcTime << " milliseconds." << endl;
+  wcout << "Iteration finished!" << endl;
+  wcout << "Took " << calcTime << " milliseconds." << endl;
 
   sol.printBoolToConsole();
-
-  //Plot
-  //solSet = true | sol
-  //scr_plot
 
   return 0;
 }
