@@ -219,7 +219,8 @@ public:
   }
 };
 
-class MatrixB : public boost::dynamic_bitset<> {
+class MatrixB {
+  boost::dynamic_bitset<> b;
 public:
   size_t dimX;
   size_t dimY;
@@ -228,29 +229,69 @@ public:
       cout << "Error in operator(): i or j >= dimX or dimY." << endl;
       exit(1);
     }
-    return this->operator [](i*dimY+j);
+    return b[i*dimY+j];
   }
   MatrixB() {}
   MatrixB(size_t dimX_, size_t dimY_) : dimX(dimX_), dimY(dimY_) {
-    this->resize(dimX*dimY);
+    b.resize(dimX*dimY);
   }
   void write(std::string path) const {
     ofstream outFILE(path, ios::out | ofstream::binary);
     outFILE.write(reinterpret_cast<const char *>(&dimX), sizeof(size_t));
     outFILE.write(reinterpret_cast<const char *>(&dimY), sizeof(size_t));
-    outFILE << *this;
-    //outFILE.write(reinterpret_cast<const char *>(&this->operator [](0), this->size()*sizeof(V));
+    outFILE << b;
   }
   void load(std::string path) {
     ifstream inFILE(path, ios::in | ifstream::binary);
     inFILE.read(reinterpret_cast<char *>(&dimX), sizeof(size_t));
     inFILE.read(reinterpret_cast<char *>(&dimY), sizeof(size_t));
-    this->resize(dimX*dimY);
-    inFILE >> *this;
-    //V v;
-    //vec.clear();
-    //while( inFILE.read(reinterpret_cast<char *>(&v), sizeof(V)))
-    //  vec.push_back(v);
+    b.resize(dimX*dimY);
+    inFILE >> b;
+  }
+  void keepRows(Matrix<BOOL> idxKeep) {
+    //Memory check
+    size_t lines = 0;
+    for(size_t i=0;i<dimX;i++)
+      if(idxKeep(i,0))
+        lines++;
+    MatrixB newMat(lines,dimY);
+    lines = 0;
+    for(size_t i=0;i<dimX;i++)
+      if(idxKeep(i,0)) {
+        for(size_t j=0;j<dimY;j++)
+          newMat(lines,j) = this->operator()(i,j);
+        lines++;
+      }
+    swap(newMat,*this);
+  }
+  Matrix<BOOL> allInColumns() {
+    Matrix<BOOL> ans(1,dimY);
+    ans.setTrue();
+    for(size_t i=0;i<dimX;i++)
+      for(size_t j=0;j<dimY;j++)
+        if(!((bool)this->operator ()(i,j))) ans(0,j) = false;
+    return ans;
+  }
+  Matrix<BOOL> anyInColumns() {
+    Matrix<BOOL> ans(1,dimY);
+    ans.setFalse();
+    for(size_t i=0;i<dimX;i++)
+      for(size_t j=0;j<dimY;j++)
+        if(this->operator ()(i,j)) ans(0,j) = true;
+    return ans;
+  }
+  void keepFirstLine() {
+    MatrixB newMat(1,dimY);
+    for(size_t j=0;j<dimY;j++)
+      newMat(0,j) = this->operator()(0,j);
+    swap(newMat,*this);
+  }
+  void dropFirstLine() {
+    MatrixB newMat(dimX-1,dimY);
+    for(size_t i=1;i<dimX;i++)
+      for(size_t j=0;j<dimY;j++)
+        newMat(i-1,j) = this->operator()(i,j);
+    swap(newMat,*this);
   }
 };
 
@@ -371,20 +412,11 @@ inline bool exist (const std::string& name) {
   }
 }
 
-void fun_logics_rec(Matrix<char>& sol, Matrix<char>& solSet, size_t incLevel, Matrix<Matrix<BOOL> >& posSol, bool& err) {
-
-  err = false;
-
-  vector<size_t> dim(2);
-  dim[0] = sol.dimX;
-  dim[1] = sol.dimY;
-
+void fun_logics_rec(Matrix<char>& sol, Matrix<char>& solSet, size_t incLevel, Matrix<MatrixB>& posSol, bool& err) {
+  vector<size_t> dim(2);dim[0] = sol.dimX;dim[1] = sol.dimY;
+  stringstream ind;for(size_t i=0;i<incLevel;i++) ind << "--";
   Matrix<BOOL> solSet_old(dim[1],dim[0]);
   solSet_old.setTrue();
-
-  stringstream ind;
-  for(size_t i=0;i<incLevel;i++)
-    ind << "--";
 
   while(true) {
     Matrix<BOOL> solSetChange = solSet & (!solSet_old);
@@ -396,7 +428,7 @@ void fun_logics_rec(Matrix<char>& sol, Matrix<char>& solSet, size_t incLevel, Ma
           size_t npSol = posSol(ori,line).dimX;
           Matrix<BOOL> mat = Matrix<BOOL>(npSol,dim[1-ori]);
           mat.setFalse();
-          Matrix<BOOL> posSolOriLine = posSol(ori,line);
+          MatrixB posSolOriLine = posSol(ori,line);
           for(size_t j=0;j < dim[1-ori];j++) {
             if(solSet(line,j)) {
               bool solLineJ = sol(line,j);
@@ -413,10 +445,10 @@ void fun_logics_rec(Matrix<char>& sol, Matrix<char>& solSet, size_t incLevel, Ma
           }
           posSol(ori,line).keepRows(idxKeep);
         }
-        Matrix<BOOL> v1 = posSol(ori,line).all(0);
+        Matrix<BOOL> v1 = posSol(ori,line).allInColumns();
         sol.setTrue(line,v1);
         solSet.setTrue(line,v1);
-        Matrix<BOOL> v2 = !(posSol(ori,line).any(0));
+        Matrix<BOOL> v2 = !(posSol(ori,line).anyInColumns());
         sol.setFalse(line,v2);
         solSet.setTrue(line,v2);
       }
@@ -428,7 +460,7 @@ void fun_logics_rec(Matrix<char>& sol, Matrix<char>& solSet, size_t incLevel, Ma
     if(solSet.all())
       return;
     if(sol_old == sol) {
-      Matrix<Matrix<BOOL> > thPosSol = posSol;
+      Matrix<MatrixB> thPosSol = posSol;
       incLevel++;
       size_t min_s = 1e6;
       size_t minOri = 2;
@@ -517,9 +549,7 @@ int main() {
         ss2 << "comp_" << (size_t) noWhiteBlocks << "_" << (size_t) noWhiteSquares << ".dat";
         if (!exist(ss2.str())) fun_cr_comps(noWhiteBlocks,noWhiteSquares);
         size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
-        Matrix<BOOL> S(noComps,dim[ori]);
-        S.setFalse();
-        MatrixB S2(noComps,dim[ori]);
+        MatrixB S(noComps,dim[ori]);
         cout << "Creating sol O" << ori << "L" << line << ", loading combination (" << (int) noWhiteBlocks << " " << (int) noWhiteSquares << ") with " << noComps << " compositions." << endl;
         Matrix<char> A(noComps,noWhiteBlocks);
         A.load(ss2.str());
@@ -528,18 +558,12 @@ int main() {
           for(size_t l=0;l<black.size();l++) {
             pos += A(k,l);
             for (size_t m = 0 ; m < black[l] ; m++) {
-              S(k,pos) = true;
-              S2(k,pos) = true;
-              pos++;
+              S(k,pos++) = true;
             }
           }
         }
         cout << "Finished sol O" << ori << "L" << line << ", using combination (" << (int)  noWhiteBlocks << " " << (int)  noWhiteSquares << ") with " << noComps << " compositions." << endl;
-
-        std::stringstream ss3;
-        ss3 << inpNr << "/ori" << ori << "_line" << line << ".dat11";
         S.write(ss.str());
-        S2.write(ss3.str());
       }
     }
   }
@@ -548,7 +572,7 @@ int main() {
   sol.setFalse();
   Matrix<BOOL> solSet = Matrix<char>(dim[1],dim[0]);
   solSet.setFalse();
-  Matrix<Matrix<BOOL> > posSol = Matrix<Matrix<BOOL> >(2,maxDim);
+  Matrix<MatrixB> posSol = Matrix<MatrixB>(2,maxDim);
   for(size_t ori=0;ori<2;ori++) {
     for(size_t line=0;line < dim[1-ori];line++) {
       std::vector<uint8_t> black = M[ori]->operator[](line);
@@ -557,7 +581,7 @@ int main() {
       std::stringstream ss;
       ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
       size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
-      Matrix<BOOL> S = Matrix<BOOL>(noComps,dim[ori]);
+      MatrixB S(noComps,dim[ori]);
       S.load(ss.str());
       posSol(ori,line) = S;
     }
