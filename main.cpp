@@ -123,6 +123,7 @@ public:
   }
   void printBoolToConsole() const {
     setlocale(LC_ALL, "");
+    wcout << "--" << endl;
     for(size_t i=0;i<dimX;i++) {
       for(size_t j=0;j<dimY;j++)
         if(this->operator ()(i,j)) {
@@ -132,33 +133,30 @@ public:
         }
       wcout << endl;
     }
-    wcout << endl;
+    wcout << "--" << endl;
   }
 
   //set-routines
-  void setFalse() {
-    for(size_t i=0;i<b.size();i++)
-      b[i] = false;
-  }
-  void setTrue() {
-    for(size_t i=0;i<b.size();i++)
-      b[i] = true;
-  }
-  void setTrue(size_t i, MatrixB vecJ) {
+  void setFalse() { b.reset(); }
+  void setTrue () { b.set();   }
+  void setTrue(size_t i, boost::dynamic_bitset<> vecJ) {
     for(size_t j=0;j<dimY;j++)
-      if (vecJ(0,j))
-        this->operator ()(i,j) = true;
+      if (vecJ[j])
+        b.set(i*dimY+j);
   }
-  void setFalse(size_t i, MatrixB vecJ) {
+  void setFalse(size_t i, boost::dynamic_bitset<> vecJ) {
     for(size_t j=0;j<dimY;j++)
-      if (vecJ(0,j))
-        this->operator ()(i,j) = false;
+      if (vecJ[j])
+        b.reset(i*dimY+j);
   }
 
   //any-all-routines
   bool all() const {
-    for(size_t i=0;i<b.size();i++)
-      if (!b[i]) return false;
+    for(size_t i=0;i<dimX;i++) {
+      for(size_t j=0;j<dimY;j++) {
+        if(!(this->operator ()(i,j))) return false;
+      }
+    }
     return true;
   }
 
@@ -186,19 +184,6 @@ public:
       }
     swap(newMat,*this);
   }
-  void keepFirstLine() {
-    MatrixB newMat(1,dimY);
-    for(size_t j=0;j<dimY;j++)
-      newMat(0,j) = this->operator()(0,j);
-    swap(newMat,*this);
-  }
-  void dropFirstLine() {
-    MatrixB newMat(dimX-1,dimY);
-    for(size_t i=1;i<dimX;i++)
-      for(size_t j=0;j<dimY;j++)
-        newMat(i-1,j) = this->operator()(i,j);
-    swap(newMat,*this);
-  }
   void transpose() {
     MatrixB newMat(dimY,dimX);
     for(size_t i=0;i<dimX;i++)
@@ -208,76 +193,111 @@ public:
   }
 };
 
-class PossibleCombinations : private MatrixB {
+class PossibleCombinations : private vector<boost::dynamic_bitset<> > {
+private:
+  size_t nAllCombinations;
+  size_t dim;
 public:
-  MatrixB active;
+  boost::dynamic_bitset<> active;
   PossibleCombinations() {}
-  PossibleCombinations(size_t dimX_, size_t dimY_) : MatrixB(dimX_,dimY_) {
-    active = MatrixB(dimX,1);
-    active.setTrue();
+  PossibleCombinations(size_t nAllCombinations_, size_t dim_) : nAllCombinations(nAllCombinations_), dim(dim_) {
+    this->resize(nAllCombinations);
+    for(size_t i=0 ; i < nAllCombinations ; i++ )
+      this->operator [](i).resize(dim);
+    active.resize(nAllCombinations);
+    active.set();
   }
-  boost::dynamic_bitset<>::reference operator()(size_t i, size_t j) {
-    if (active(i,0)) {
-      return MatrixB::operator ()(i,j);
+  boost::dynamic_bitset<>::reference operator()(size_t combination, size_t j) {
+    if (active[combination]) {
+      return this->operator[](combination).operator[](j);
     } else {
       wcout << "Not active!" << endl;
       exit(1);
     }
   }
-  bool operator()(size_t i, size_t j) const {
-    if (active(i,0)) {
-      return MatrixB::operator ()(i,j);
+  bool operator()(size_t combination, size_t j) const {
+    if (active[combination]) {
+      return this->operator[](combination).operator[](j);
     } else {
       wcout << "Not active!" << endl;
       exit(1);
     }
   }
-  size_t getNumberOfLines() { return this->dimX; }
-  size_t getDimY() { return this->dimY; }
-  size_t getNumberOfActiveLines() {
-    size_t ans = 0;
-    for(size_t i=0;i<active.dimX;i++)
-      if(active(i,0))
-        ans++;
+  size_t getNAllCombinations() { return nAllCombinations; }
+  size_t getNActiveLines() { return active.count(); }
+  size_t getDim() { return dim; }
+  boost::dynamic_bitset<> allTrueInActiveColumns() const {
+    boost::dynamic_bitset<> ans(dim);
+    ans.set();
+    for(size_t i=0;i<nAllCombinations;i++)
+      if(active[i])
+        for(size_t j=0;j<dim;j++)
+          if(!(this->operator ()(i,j)))
+            ans.reset(j);
     return ans;
   }
-  MatrixB allTrueInActiveColumns() const {
-    MatrixB ans(1,this->dimY);
-    ans.setTrue();
-    for(size_t i=0;i<this->dimX;i++)
-      if(active(i,0))
-        for(size_t j=0;j<this->dimY;j++)
-          if(!(MatrixB::operator ()(i,j))) ans(0,j) = false;
-    return ans;
-  }
-  MatrixB allFalseInActiveColumns() const {
-    MatrixB ans(1,this->dimY);
-    ans.setTrue();
-    for(size_t i=0;i<this->dimX;i++)
-      if(active(i,0))
-        for(size_t j=0;j<this->dimY;j++)
-          if(MatrixB::operator ()(i,j)) ans(0,j) = false;
+  boost::dynamic_bitset<> allFalseInActiveColumns() const {
+    boost::dynamic_bitset<> ans(dim);
+    ans.set();
+    for(size_t i=0;i<nAllCombinations;i++) {
+      if(active[i])
+        for(size_t j=0;j<dim;j++)
+          if(this->operator ()(i,j))
+            ans.reset(j);
+    }
     return ans;
   }
   void keepFirstActiveLine() {
-    size_t firstActiveIdx = 0;
-    for(size_t i=0;i<active.dimX;i++)
-      if(active(i,0)) {
-        firstActiveIdx = i;
-        break;
-      }
-    active.setFalse();
-    active(firstActiveIdx,0) = true;
+    size_t firstActiveIdx = active.find_first();
+    active.reset();
+    active.flip(firstActiveIdx);
   }
   void dropFirstActiveLine() {
-    for(size_t i=0;i<active.dimX;i++)
-      if(active(i,0)) {
-        active(i,0) = false;
-        break;
-      }
+    size_t firstActiveIdx = active.find_first();
+    active.flip(firstActiveIdx);
+  }
+  void write(std::string path) const {
+    ofstream outFILE(path, ios::out | ofstream::binary);
+    outFILE.write(reinterpret_cast<const char *>(&nAllCombinations), sizeof(size_t));
+    outFILE.write(reinterpret_cast<const char *>(&dim), sizeof(size_t));
+    for(size_t i=0;i<nAllCombinations;i++)
+      for(size_t j=0 ; j < dim ; j++)
+        if (this->operator [](i).operator[](j)) {
+          outFILE << '1';
+        } else {
+          outFILE << '0';
+        }
   }
   void load(std::string path) {
-    MatrixB::load(path);
+    ifstream inFILE(path, ios::in | ifstream::binary);
+    inFILE.read(reinterpret_cast<char *>(&nAllCombinations), sizeof(size_t));
+    inFILE.read(reinterpret_cast<char *>(&dim), sizeof(size_t));
+    char* buffer = new char[dim*nAllCombinations];
+    inFILE.read(buffer,dim*nAllCombinations);
+    this->resize(nAllCombinations);
+    for(size_t i=0 ; i < nAllCombinations ; i++ ) {
+      this->operator[](i).resize(dim);
+      for(size_t j=0 ; j < dim ; j++)
+        if (buffer[i*dim+j] == '1')
+          this->operator[](i).flip(j);
+    }
+  }
+  void printBoolToConsole() const {
+    setlocale(LC_ALL, "");
+    wcout << "--" << endl;
+    for(size_t i=0;i<nAllCombinations;i++) {
+      for(size_t j=0;j<dim;j++)
+        if(this->operator ()(i,j)) {
+          wcout << L'\u2588';
+        } else {
+          wcout << '.';
+        }
+      wcout << endl;
+    }
+    wcout << "--" << endl;
+  }
+  boost::dynamic_bitset<>& getCombination(size_t j)  {
+    return this->operator [](j);
   }
 };
 
@@ -420,32 +440,35 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<PossibleCombinations>
       for(size_t line=0;line < dim[ori];line++) {
         PossibleCombinations* possibleCombinations = &(posSol(ori,line));
         if (solSetChange.anyInRow(line)) {
-          bool allLinesDropped = true;
-          size_t npSol = possibleCombinations->getNumberOfLines();
-          size_t dimLine = possibleCombinations->getDimY();
+          size_t npSol = possibleCombinations->getNAllCombinations();
+          size_t dimLine = possibleCombinations->getDim();
+          boost::dynamic_bitset<> solSetLine(dimLine);
+          boost::dynamic_bitset<> solLine(dimLine);
+          for(size_t j=0 ; j < dimLine ; j++) {
+            if(solSet(line,j)) solSetLine.set(j);
+            if(sol(line,j)) solLine.set(j);
+          }
           for(size_t i=0 ; i < npSol ; i++) {
-            if(possibleCombinations->active(i,0)) {
-              for(size_t j=0 ; j < dimLine ; j++) {
-                if (solSet(line,j) & (sol(line,j) ^ possibleCombinations->operator ()(i,j))) {
-                  //We drop this combination
-                  possibleCombinations->active(i,0) = false;
-                  break;
-                } else {
-                  //We keep at least one combination - No error in this (ori,line)
-                  allLinesDropped = false;
-                }
-              }
+            if(possibleCombinations->active[i]) {
+              if((solSetLine & (solLine ^ possibleCombinations->getCombination(i))).any())
+                possibleCombinations->active.reset(i);
+              //              for(size_t j=0 ; j < dimLine ; j++) {
+              //                if (solSet(line,j) & (sol(line,j) ^ possibleCombinations->operator ()(i,j))) {
+              //                  possibleCombinations->active.reset(i);
+              //                  break;
+              //                }
+              //              }
             }
           }
-          if(allLinesDropped) {
+          if(possibleCombinations->active.none()) {
             err = true;
             return sol;
           }
         }
-        MatrixB v1 = possibleCombinations->allTrueInActiveColumns();
+        boost::dynamic_bitset<> v1 = possibleCombinations->allTrueInActiveColumns();
         sol.setTrue(line,v1);
         solSet.setTrue(line,v1);
-        MatrixB v2 = possibleCombinations->allFalseInActiveColumns();
+        boost::dynamic_bitset<> v2 = possibleCombinations->allFalseInActiveColumns();
         sol.setFalse(line,v2);
         solSet.setTrue(line,v2);
       }
@@ -466,7 +489,7 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<PossibleCombinations>
       size_t minLine = 100;
       for(size_t ori=0;ori<2;ori++)  {
         for(size_t line=0;line<dim[ori];line++) {
-          size_t nActiveLines = posSol(ori,line).getNumberOfActiveLines();
+          size_t nActiveLines = posSol(ori,line).getNActiveLines();
           if (1 < nActiveLines && nActiveLines < min_s) {
             min_s = nActiveLines;
             minOri = ori;
@@ -553,7 +576,7 @@ int main(int argc, const char* argv[]) {
         std::stringstream ss2;
         ss2 << "comp_" << (size_t) noWhiteBlocks << "_" << (size_t) noWhiteSquares << ".dat";
         if (!exist(ss2.str())) fun_cr_comps(noWhiteBlocks,noWhiteSquares);
-        MatrixB S(noComps,dim[ori]);
+        PossibleCombinations S(noComps,dim[ori]);
         Matrix<uint8_t> A(noComps,noWhiteBlocks);
         A.load(ss2.str());
         for(size_t k=0;k<noComps;k++) {
@@ -595,10 +618,13 @@ int main(int argc, const char* argv[]) {
   sol = fun_logics_rec(sol,solSet,posSol,err,0);
   auto t_end = std::chrono::high_resolution_clock::now();
   double calcTime = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
-  wcout << "Iteration finished!" << endl;
-  wcout << "Took " << calcTime << " milliseconds." << endl;
-
-  sol.printBoolToConsole();
-
-  return 0;
+  if (err) {
+    wcout << "Returned error :-(" << endl;
+    return(1);
+  } else {
+    wcout << "Iteration finished!" << endl;
+    wcout << "Took " << calcTime << " milliseconds." << endl;
+    sol.printBoolToConsole();
+    return 0;
+  }
 }
