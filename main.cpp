@@ -1,17 +1,14 @@
 #include <clocale>
-#include <iostream>
 #include <vector>
+#include <iostream>
 #include <fstream>
+#include <sstream>
 #include <iterator>
 #include <algorithm>
-#include <bitset>
-#include <sstream>
 #include <chrono>
 #include <ctime>
 
-#include "boost/dynamic_bitset.hpp"
-
-#include "omp.h"
+#define BOOL char
 
 using namespace std;
 
@@ -42,10 +39,8 @@ public:
     ifstream inFILE(path, ios::in | ifstream::binary);
     inFILE.read(reinterpret_cast<char *>(&dimX), sizeof(size_t));
     inFILE.read(reinterpret_cast<char *>(&dimY), sizeof(size_t));
-    V v;
-    vec.clear();
-    while( inFILE.read(reinterpret_cast<char *>(&v), sizeof(V)))
-      vec.push_back(v);
+    vec.resize(dimX*dimY);
+    inFILE.read(reinterpret_cast<char *>(&vec[0]), vec.size()*sizeof(V));
   }
   void printValToConsole() {
     for(size_t i=0;i<dimX;i++) {
@@ -58,68 +53,48 @@ public:
 };
 
 class MatrixB {
-  boost::dynamic_bitset<> b;
+  vector<BOOL> b;
 public:
   size_t dimX;
   size_t dimY;
-  boost::dynamic_bitset<>::reference operator()(size_t i, size_t j) {
-    if(i>=dimX || j>=dimY) {
-      wcout << "Error in operator(): i or j >= dimX or dimY." << endl;
-      exit(1);
-    }
+  inline BOOL& operator()(size_t i, size_t j) {
     return b[i*dimY+j];
   }
-  bool operator()(size_t i, size_t j) const {
-    if(i>=dimX || j>=dimY) {
-      wcout << "Error in operator(): i or j >= dimX or dimY." << endl;
-      exit(1);
-    }
+  inline BOOL operator()(size_t i, size_t j) const {
     return b[i*dimY+j];
   }
-  MatrixB() {}
   MatrixB(size_t dimX_, size_t dimY_) : dimX(dimX_), dimY(dimY_) {
     b.resize(dimX*dimY);
   }
 
   //operators
-  MatrixB operator &(MatrixB mat) const {
-    MatrixB ans = *this;
-    for(size_t i=0;i<b.size();i++)
-      ans.b[i] = this->b[i] & mat.b[i];
-    return ans;
-  }
   MatrixB operator ^(MatrixB mat) const {
     MatrixB ans = *this;
     for(size_t i=0;i<b.size();i++)
       ans.b[i] = this->b[i] ^ mat.b[i];
     return ans;
   }
-  MatrixB operator!() const {
-    MatrixB ans = *this;
-    for(size_t i=0;i<b.size();i++)
-      ans.b[i] = !this->b[i];
-    return ans;
-  }
   bool operator==(MatrixB mat) const {
     for(size_t i=0;i<dimX;i++)
       for(size_t j=0;j<dimY;j++)
-        if (this->operator()(i,j) != mat(i,j)) return false;
+        if (b[i*dimY+j] != mat.b[i*dimY+j])
+          return false;
     return true;
   }
 
   //write-load-routines
   void write(std::string path) const {
-    ofstream outFILE(path, ios::out | ofstream::binary);
-    outFILE.write(reinterpret_cast<const char *>(&dimX), sizeof(size_t));
-    outFILE.write(reinterpret_cast<const char *>(&dimY), sizeof(size_t));
-    outFILE << b;
+    std::ofstream FILE(path, std::ios::out | std::ofstream::binary);
+    FILE.write(reinterpret_cast<const char *>(&dimX), sizeof(size_t));
+    FILE.write(reinterpret_cast<const char *>(&dimY), sizeof(size_t));
+    FILE.write(reinterpret_cast<const char *>(&b[0]), sizeof(BOOL)*dimX*dimY);
   }
   void load(std::string path) {
-    ifstream inFILE(path, ios::in | ifstream::binary);
-    inFILE.read(reinterpret_cast<char *>(&dimX), sizeof(size_t));
-    inFILE.read(reinterpret_cast<char *>(&dimY), sizeof(size_t));
+    std::ifstream INFILE(path, std::ios::in | std::ifstream::binary);
+    INFILE.read(reinterpret_cast<char *>(&dimX), sizeof(size_t));
+    INFILE.read(reinterpret_cast<char *>(&dimY), sizeof(size_t));
     b.resize(dimX*dimY);
-    inFILE >> b;
+    INFILE.read(reinterpret_cast<char *>(&b[0]), sizeof(BOOL)*dimX*dimY);
   }
   void printBoolToConsole() const {
     setlocale(LC_ALL, "");
@@ -137,52 +112,27 @@ public:
   }
 
   //set-routines
-  void setFalse() { b.reset(); }
-  void setTrue () { b.set();   }
-  void setTrue(size_t i, boost::dynamic_bitset<> vecJ) {
+  void set(bool val) {
+    std::fill(b.begin(), b.end(), val);
+  }
+  void set(size_t i, vector<BOOL> vecJ, bool val) {
     for(size_t j=0;j<dimY;j++)
       if (vecJ[j])
-        b.set(i*dimY+j);
+        b[i*dimY+j] = val;
   }
-  void setFalse(size_t i, boost::dynamic_bitset<> vecJ) {
-    for(size_t j=0;j<dimY;j++)
-      if (vecJ[j])
-        b.reset(i*dimY+j);
-  }
-
-  //any-all-routines
   bool all() const {
     for(size_t i=0;i<dimX;i++) {
       for(size_t j=0;j<dimY;j++) {
-        if(!(this->operator ()(i,j))) return false;
+        if(!(b[i*dimY+j])) return false;
       }
     }
     return true;
   }
-
   bool anyInRow(size_t line) const {
     for(size_t j=0;j<dimY;j++)
       if (this->operator()(line,j))
         return true;
     return false;
-  }
-
-  //complex logical routines
-  void dropRows(MatrixB idxDrop) {
-    //Memory check
-    size_t lines = dimX;
-    for(size_t i=0;i<dimX;i++)
-      if(idxDrop(i,0))
-        lines--;
-    MatrixB newMat(lines,dimY);
-    lines = 0;
-    for(size_t i=0;i<dimX;i++)
-      if(!(idxDrop(i,0))) {
-        for(size_t j=0;j<dimY;j++)
-          newMat(lines,j) = this->operator()(i,j);
-        lines++;
-      }
-    swap(newMat,*this);
   }
   void transpose() {
     MatrixB newMat(dimY,dimX);
@@ -193,101 +143,76 @@ public:
   }
 };
 
-class PossibleCombinations : private vector<boost::dynamic_bitset<> > {
+class PossibleCombinations {
 private:
+  std::vector<BOOL> vec;
   size_t nAllCombinations;
   size_t dim;
 public:
-  boost::dynamic_bitset<> active;
+  vector<BOOL> active;
   PossibleCombinations() {}
   PossibleCombinations(size_t nAllCombinations_, size_t dim_) : nAllCombinations(nAllCombinations_), dim(dim_) {
-    this->resize(nAllCombinations);
+    vec.resize(nAllCombinations*dim);
+    active.resize(nAllCombinations,true);
+  }
+  inline BOOL& operator()(size_t combination, size_t j) {
+    return vec[combination*dim+j];
+  }
+  inline BOOL operator()(size_t combination, size_t j) const {
+    return vec[combination*dim+j];
+  }
+  size_t getNAllCombinations() const {
+    return nAllCombinations;
+  }
+  size_t getNActiveLines() const {
+    size_t sum = 0;
     for(size_t i=0 ; i < nAllCombinations ; i++ )
-      this->operator [](i).resize(dim);
-    active.resize(nAllCombinations);
-    active.set();
-  }
-  boost::dynamic_bitset<>::reference operator()(size_t combination, size_t j) {
-    if (active[combination]) {
-      return this->operator[](combination).operator[](j);
-    } else {
-      wcout << "Not active!" << endl;
-      exit(1);
-    }
-  }
-  bool operator()(size_t combination, size_t j) const {
-    if (active[combination]) {
-      return this->operator[](combination).operator[](j);
-    } else {
-      wcout << "Not active!" << endl;
-      exit(1);
-    }
-  }
-  size_t getNAllCombinations() { return nAllCombinations; }
-  size_t getNActiveLines() { return active.count(); }
-  size_t getDim() { return dim; }
-  boost::dynamic_bitset<> allTrueInActiveColumns() const {
-    boost::dynamic_bitset<> ans(dim);
-    ans.set();
-    for(size_t i=0;i<nAllCombinations;i++)
       if(active[i])
-        for(size_t j=0;j<dim;j++)
-          if(!(this->operator ()(i,j)))
-            ans.reset(j);
-    return ans;
+        sum++;
+    return sum;
   }
-  boost::dynamic_bitset<> allFalseInActiveColumns() const {
-    boost::dynamic_bitset<> ans(dim);
-    ans.set();
-    for(size_t i=0;i<nAllCombinations;i++) {
-      if(active[i])
-        for(size_t j=0;j<dim;j++)
-          if(this->operator ()(i,j))
-            ans.reset(j);
-    }
-    return ans;
+  size_t getDim() const {
+    return dim;
   }
   void keepFirstActiveLine() {
-    size_t firstActiveIdx = active.find_first();
-    active.reset();
-    active.flip(firstActiveIdx);
+    size_t firstActiveIdx = 0;
+    for(size_t i=0 ; i < nAllCombinations ; i++ )
+      if(active[i]) {
+        firstActiveIdx = i;
+        break;
+      }
+    std::fill(active.begin(), active.end(), false);
+    active[firstActiveIdx] = true;
   }
   void dropFirstActiveLine() {
-    size_t firstActiveIdx = active.find_first();
-    active.flip(firstActiveIdx);
+    size_t firstActiveIdx = 0;
+    for(size_t i=0 ; i < nAllCombinations ; i++ )
+      if(active[i]) {
+        firstActiveIdx = i;
+        break;
+      }
+    active[firstActiveIdx] = false;
   }
   void write(std::string path) const {
-    ofstream outFILE(path, ios::out | ofstream::binary);
-    outFILE.write(reinterpret_cast<const char *>(&nAllCombinations), sizeof(size_t));
-    outFILE.write(reinterpret_cast<const char *>(&dim), sizeof(size_t));
-    for(size_t i=0;i<nAllCombinations;i++)
-      for(size_t j=0 ; j < dim ; j++)
-        if (this->operator [](i).operator[](j)) {
-          outFILE << '1';
-        } else {
-          outFILE << '0';
-        }
+    std::ofstream FILE(path, std::ios::out | std::ofstream::binary);
+    FILE.write(reinterpret_cast<const char *>(&nAllCombinations), sizeof(size_t));
+    FILE.write(reinterpret_cast<const char *>(&dim), sizeof(size_t));
+    FILE.write(reinterpret_cast<const char *>(&vec[0]), sizeof(BOOL)*nAllCombinations*dim);
   }
   void load(std::string path) {
-    ifstream inFILE(path, ios::in | ifstream::binary);
-    inFILE.read(reinterpret_cast<char *>(&nAllCombinations), sizeof(size_t));
-    inFILE.read(reinterpret_cast<char *>(&dim), sizeof(size_t));
-    char* buffer = new char[dim*nAllCombinations];
-    inFILE.read(buffer,dim*nAllCombinations);
-    this->resize(nAllCombinations);
-    for(size_t i=0 ; i < nAllCombinations ; i++ ) {
-      this->operator[](i).resize(dim);
-      for(size_t j=0 ; j < dim ; j++)
-        if (buffer[i*dim+j] == '1')
-          this->operator[](i).flip(j);
-    }
+    std::ifstream INFILE(path, std::ios::in | std::ifstream::binary);
+    INFILE.read(reinterpret_cast<char *>(&nAllCombinations), sizeof(size_t));
+    INFILE.read(reinterpret_cast<char *>(&dim), sizeof(size_t));
+    active.resize(nAllCombinations,true);
+    vec.resize(nAllCombinations*dim);
+    INFILE.read(reinterpret_cast<char *>(&vec[0]), sizeof(BOOL)*nAllCombinations*dim);
   }
   void printBoolToConsole() const {
     setlocale(LC_ALL, "");
     wcout << "--" << endl;
     for(size_t i=0;i<nAllCombinations;i++) {
       for(size_t j=0;j<dim;j++)
-        if(this->operator ()(i,j)) {
+        if(vec[i*dim+j]) {
           wcout << L'\u2588';
         } else {
           wcout << '.';
@@ -295,9 +220,6 @@ public:
       wcout << endl;
     }
     wcout << "--" << endl;
-  }
-  boost::dynamic_bitset<>& getCombination(size_t j)  {
-    return this->operator [](j);
   }
 };
 
@@ -430,47 +352,53 @@ bool exist (const std::string& name) {
 MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<PossibleCombinations>& posSol, bool& err, size_t incLevel) {
   vector<size_t> dim(2);dim[0] = sol.dimX;dim[1] = sol.dimY;
 
-  MatrixB solSet_old(dim[1],dim[0]);solSet_old.setTrue();
+  MatrixB solSet_old(dim[1],dim[0]);solSet_old.set(true);
+
+  vector<BOOL> allTrueInActiveColumns(max(dim[0],dim[1]),true);
+  vector<BOOL> allFalseInActiveColumns(max(dim[0],dim[1]),true);
 
   while(true) {
-    MatrixB solSetChange = solSet & (!solSet_old);
+    MatrixB solSetChange = solSet ^ solSet_old;
     solSet_old = solSet;
     MatrixB sol_old = sol;
     for(size_t ori=0;ori<2;ori++) {
       for(size_t line=0;line < dim[ori];line++) {
-        PossibleCombinations* possibleCombinations = &(posSol(ori,line));
+        PossibleCombinations& possibleCombinations = posSol(ori,line);
+        size_t npSol = possibleCombinations.getNAllCombinations();
+        size_t dimLine = dim[1-ori];
         if (solSetChange.anyInRow(line)) {
-          size_t npSol = possibleCombinations->getNAllCombinations();
-          size_t dimLine = possibleCombinations->getDim();
-          boost::dynamic_bitset<> solSetLine(dimLine);
-          boost::dynamic_bitset<> solLine(dimLine);
-          for(size_t j=0 ; j < dimLine ; j++) {
-            if(solSet(line,j)) solSetLine.set(j);
-            if(sol(line,j)) solLine.set(j);
-          }
+          bool allLinesDropped = true;
           for(size_t i=0 ; i < npSol ; i++) {
-            if(possibleCombinations->active[i]) {
-              if((solSetLine & (solLine ^ possibleCombinations->getCombination(i))).any())
-                possibleCombinations->active.reset(i);
-              //              for(size_t j=0 ; j < dimLine ; j++) {
-              //                if (solSet(line,j) & (sol(line,j) ^ possibleCombinations->operator ()(i,j))) {
-              //                  possibleCombinations->active.reset(i);
-              //                  break;
-              //                }
-              //              }
+            if(possibleCombinations.active[i]) {
+              for(size_t j=0 ; j < dimLine ; j++) {
+                if (solSet(line,j) & (sol(line,j) ^ possibleCombinations(i,j))) {
+                  possibleCombinations.active[i] = false;
+                  break;
+                } else {
+                  allLinesDropped = false;
+                }
+              }
             }
           }
-          if(possibleCombinations->active.none()) {
+          if(allLinesDropped) {
             err = true;
             return sol;
           }
         }
-        boost::dynamic_bitset<> v1 = possibleCombinations->allTrueInActiveColumns();
-        sol.setTrue(line,v1);
-        solSet.setTrue(line,v1);
-        boost::dynamic_bitset<> v2 = possibleCombinations->allFalseInActiveColumns();
-        sol.setFalse(line,v2);
-        solSet.setTrue(line,v2);
+        std::fill(allTrueInActiveColumns .begin(),allTrueInActiveColumns .end(),true);
+        std::fill(allFalseInActiveColumns.begin(),allFalseInActiveColumns.end(),true);
+        for(size_t i=0;i<npSol;i++)
+          if(possibleCombinations.active[i])
+            for(size_t j=0;j<dimLine;j++)
+              if(possibleCombinations(i,j)) {
+                allFalseInActiveColumns[j] = false;
+              } else {
+                allTrueInActiveColumns[j] = false;
+              }
+        sol.set(line,allTrueInActiveColumns,true);
+        solSet.set(line,allTrueInActiveColumns,true);
+        sol.set(line,allFalseInActiveColumns,false);
+        solSet.set(line,allFalseInActiveColumns,true);
       }
       sol.transpose();
       solSet.transpose();
@@ -596,17 +524,13 @@ int main(int argc, const char* argv[]) {
   MatrixB sol(dim[1],dim[0]);
   MatrixB solSet(dim[1],dim[0]);
   Matrix<PossibleCombinations> posSol(2,maxDim);
+  Matrix<vector<BOOL> > active(2,maxDim);
   for(size_t ori=0;ori<2;ori++) {
     for(size_t line=0;line < dim[1-ori];line++) {
-      std::vector<uint8_t> black = M[ori]->operator[](line);
-      uint8_t noWhiteBlocks = black.size() + 1;
-      uint8_t noWhiteSquares = dim[ori] - accumulate(black.begin(),black.end(),0);
       std::stringstream ss;
       ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
-      size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
-      PossibleCombinations S(noComps,dim[ori]);
-      S.load(ss.str());
-      posSol(ori,line) = S;
+      posSol(ori,line).load(ss.str());
+      active(ori,line).resize(posSol(ori,line).getNAllCombinations(),true);
     }
   }
   wcout << "Creation finished!" << endl;
