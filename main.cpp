@@ -10,6 +10,8 @@
 
 #include "omp.h"
 
+#include "boost/dynamic_bitset.hpp"
+
 #define BOOL char
 
 using namespace std;
@@ -55,9 +57,9 @@ public:
 
 class MatrixB {
   vector<BOOL> b;
-public:
   size_t dimX;
   size_t dimY;
+public:
   inline BOOL& operator()(size_t i, size_t j) {
     return b[i*dimY+j];
   }
@@ -68,6 +70,8 @@ public:
   MatrixB(size_t dimX_, size_t dimY_) : dimX(dimX_), dimY(dimY_) {
     b.resize(dimX*dimY);
   }
+  size_t getDimX() { return dimX; }
+  size_t getDimY() { return dimY; }
 
   //operators
   MatrixB operator ^(MatrixB mat) const {
@@ -142,6 +146,58 @@ public:
       for(size_t j=0;j<dimY;j++)
         newMat(j,i) = this->operator()(i,j);
     swap(newMat,*this);
+  }
+};
+
+class MatrixSmallB {
+  vector<BOOL> b;
+  size_t dimX;
+  size_t dimY;
+public:
+  inline BOOL& operator()(size_t i, size_t j)      { return b[i*dimY+j];}
+  inline BOOL  operator()(size_t i, size_t j) const { return b[i*dimY+j];}
+  MatrixSmallB() {}
+  MatrixSmallB(size_t dimX_, size_t dimY_) : dimX(dimX_), dimY(dimY_) {
+    b.resize(dimX*dimY);
+  }
+  void write(std::string path) const {
+    std::ofstream FILE(path, std::ios::out | std::ofstream::binary);
+    FILE.write(reinterpret_cast<const char *>(&dimX), sizeof(size_t));
+    FILE.write(reinterpret_cast<const char *>(&dimY), sizeof(size_t));
+    FILE.write(reinterpret_cast<const char *>(&b[0]), sizeof(BOOL)*dimX*dimY);
+  }
+  void load(std::string path) {
+    std::ifstream INFILE(path, std::ios::in | std::ifstream::binary);
+    INFILE.read(reinterpret_cast<char *>(&dimX), sizeof(size_t));
+    INFILE.read(reinterpret_cast<char *>(&dimY), sizeof(size_t));
+    b.resize(dimX*dimY);
+    INFILE.read(reinterpret_cast<char *>(&b[0]), sizeof(BOOL)*dimX*dimY);
+  }
+};
+
+class MatrixSmallB2 {
+  boost::dynamic_bitset<> b;
+  size_t dimX;
+  size_t dimY;
+public:
+  inline boost::dynamic_bitset<>::reference operator()(size_t i, size_t j)       { return b[i*dimY+j];}
+  inline bool                             operator()(size_t i, size_t j) const { return b[i*dimY+j];}
+  MatrixSmallB2() {}
+  MatrixSmallB2(size_t dimX_, size_t dimY_) : dimX(dimX_), dimY(dimY_) {
+    b.resize(dimX*dimY);
+  }
+  void write(std::string path) const {
+    std::ofstream FILE(path, std::ios::out | std::ofstream::binary);
+    FILE.write(reinterpret_cast<const char *>(&dimX), sizeof(size_t));
+    FILE.write(reinterpret_cast<const char *>(&dimY), sizeof(size_t));
+    FILE << b;
+  }
+  void load(std::string path) {
+    std::ifstream INFILE(path, std::ios::in | std::ifstream::binary);
+    INFILE.read(reinterpret_cast<char *>(&dimX), sizeof(size_t));
+    INFILE.read(reinterpret_cast<char *>(&dimY), sizeof(size_t));
+    b.resize(dimX*dimY);
+    INFILE >> b;
   }
 };
 
@@ -271,23 +327,26 @@ bool exist (const std::string& name) {
   }
 }
 
-MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixB>& posSol, Matrix<vector<BOOL> > active, bool& err, size_t incLevel) {
-  vector<size_t> dim(2);dim[0] = sol.dimX;dim[1] = sol.dimY;
+MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSol, Matrix<vector<BOOL> > active, bool& err, size_t incLevel) {
+  vector<size_t> dim(2);dim[0] = sol.getDimX();dim[1] = sol.getDimY();
 
   MatrixB solSet_old(dim[1],dim[0]);solSet_old.set(true);
 
   vector<BOOL> allTrueInActiveColumns(max(dim[0],dim[1]),true);
   vector<BOOL> allFalseInActiveColumns(max(dim[0],dim[1]),true);
 
+  size_t counter = 0;
+
   while(true) {
+    counter++;
     MatrixB solSetChange = solSet ^ solSet_old;
     solSet_old = solSet;
     MatrixB sol_old = sol;
     for(size_t ori=0;ori<2;ori++) {
       err = false;
       for(size_t line=0;line < dim[ori];line++) {
-        MatrixB& possibleCombinations = posSol(ori,line);
-        size_t npSol = possibleCombinations.dimX;
+        MatrixSmallB2& possibleCombinations = posSol(ori,line);
+        size_t npSol = active(ori,line).size();
         size_t dimLine = dim[1-ori];
         if (solSetChange.anyInRow(line)) {
           bool allLinesDropped = true;
@@ -327,6 +386,8 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixB>& posSol, Mat
       solSet.transpose();
       solSetChange.transpose();
     }
+    wcout << endl << "Iteration = " << counter << endl;
+    sol.printBoolToConsole();
     // Check if we are finished
     if(solSet.all()) {
       err = false;
@@ -439,7 +500,7 @@ int main(int argc, const char* argv[]) {
         std::stringstream ss2;
         ss2 << "comp_" << (size_t) noWhiteBlocks << "_" << (size_t) noWhiteSquares << ".dat";
         if (!exist(ss2.str())) fun_cr_comps(noWhiteBlocks,noWhiteSquares);
-        MatrixB S(noComps,dim[ori]);
+        MatrixSmallB2 S(noComps,dim[ori]);
         Matrix<uint8_t> A(noComps,noWhiteBlocks);
         A.load(ss2.str());
         for(size_t k=0;k<noComps;k++) {
@@ -458,14 +519,19 @@ int main(int argc, const char* argv[]) {
   }
   MatrixB sol(dim[1],dim[0]);
   MatrixB solSet(dim[1],dim[0]);
-  Matrix<MatrixB> posSol(2,maxDim);
+  Matrix<MatrixSmallB2> posSol(2,maxDim);
   Matrix<vector<BOOL> > active(2,maxDim);
   for(size_t ori=0;ori<2;ori++) {
     for(size_t line=0;line < dim[1-ori];line++) {
+      std::vector<uint8_t> black = M[ori]->operator[](line);
+      uint8_t noWhiteBlocks = black.size() + 1;
+      uint8_t noWhiteSquares = dim[ori] - accumulate(black.begin(),black.end(),0);
+      size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
+      wcout << "Ori=" << ori << " Line=" << line << endl;
       std::stringstream ss;
       ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
       posSol(ori,line).load(ss.str());
-      active(ori,line).resize(posSol(ori,line).dimX,true);
+      active(ori,line).resize(noComps,true);
     }
   }
   wcout << "Creation finished!" << endl;
