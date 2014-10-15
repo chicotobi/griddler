@@ -156,48 +156,12 @@ public:
   }
 
   //any-all-routines
-  bool any() const {
-    for(size_t i=0;i<b.size();i++)
-      if (b[i]) return true;
-    return false;
-  }
   bool all() const {
     for(size_t i=0;i<b.size();i++)
       if (!b[i]) return false;
     return true;
   }
-  MatrixB allInColumns() const {
-    MatrixB ans(1,dimY);
-    ans.setTrue();
-    for(size_t i=0;i<dimX;i++)
-      for(size_t j=0;j<dimY;j++)
-        if(!((bool)this->operator ()(i,j))) ans(0,j) = false;
-    return ans;
-  }
-  MatrixB allInRows() const {
-    MatrixB ans(dimX,1);
-    ans.setTrue();
-    for(size_t i=0;i<dimX;i++)
-      for(size_t j=0;j<dimY;j++)
-        if(!((bool)this->operator ()(i,j))) ans(i,0) = false;
-    return ans;
-  }
-  MatrixB anyInColumns() const {
-    MatrixB ans(1,dimY);
-    ans.setFalse();
-    for(size_t i=0;i<dimX;i++)
-      for(size_t j=0;j<dimY;j++)
-        if(this->operator ()(i,j)) ans(0,j) = true;
-    return ans;
-  }
-  MatrixB anyInRows() const {
-    MatrixB ans(dimX,1);
-    ans.setFalse();
-    for(size_t i=0;i<dimX;i++)
-      for(size_t j=0;j<dimY;j++)
-        if(this->operator ()(i,j)) ans(i,0) = true;
-    return ans;
-  }
+
   bool anyInRow(size_t line) const {
     for(size_t j=0;j<dimY;j++)
       if (this->operator()(line,j))
@@ -244,14 +208,17 @@ public:
   }
 };
 
-class Line {
+class PossibleCombinations : private MatrixB {
 public:
-  MatrixB possibleCombinations;
   MatrixB active;
-  Line() {}
+  PossibleCombinations() {}
+  PossibleCombinations(size_t dimX_, size_t dimY_) : MatrixB(dimX_,dimY_) {
+    active = MatrixB(dimX,1);
+    active.setTrue();
+  }
   boost::dynamic_bitset<>::reference operator()(size_t i, size_t j) {
     if (active(i,0)) {
-      return possibleLines(i,j);
+      return MatrixB::operator ()(i,j);
     } else {
       wcout << "Not active!" << endl;
       exit(1);
@@ -259,56 +226,58 @@ public:
   }
   bool operator()(size_t i, size_t j) const {
     if (active(i,0)) {
-      return possibleLines(i,j);
+      return MatrixB::operator ()(i,j);
     } else {
       wcout << "Not active!" << endl;
       exit(1);
     }
   }
-  size_t getNumberOfLines() {
-    return possibleLines.dimX;
-  }
+  size_t getNumberOfLines() { return this->dimX; }
+  size_t getDimY() { return this->dimY; }
   size_t getNumberOfActiveLines() {
     size_t ans = 0;
-    for(size_t i=0;i<active.dimY;i++)
-      if(active(0,i))
+    for(size_t i=0;i<active.dimX;i++)
+      if(active(i,0))
         ans++;
     return ans;
   }
   MatrixB allTrueInActiveColumns() const {
-    MatrixB ans(1,possibleLines.dimY);
+    MatrixB ans(1,this->dimY);
     ans.setTrue();
-    for(size_t i=0;i<possibleLines.dimX;i++)
+    for(size_t i=0;i<this->dimX;i++)
       if(active(i,0))
-        for(size_t j=0;j<possibleLines.dimY;j++)
-          if(!(possibleLines(i,j))) ans(0,j) = false;
+        for(size_t j=0;j<this->dimY;j++)
+          if(!(MatrixB::operator ()(i,j))) ans(0,j) = false;
     return ans;
   }
   MatrixB allFalseInActiveColumns() const {
-    MatrixB ans(1,possibleLines.dimY);
+    MatrixB ans(1,this->dimY);
     ans.setTrue();
-    for(size_t i=0;i<possibleLines.dimX;i++)
+    for(size_t i=0;i<this->dimX;i++)
       if(active(i,0))
-        for(size_t j=0;j<possibleLines.dimY;j++)
-          if(possibleLines(i,j)) ans(0,j) = false;
+        for(size_t j=0;j<this->dimY;j++)
+          if(MatrixB::operator ()(i,j)) ans(0,j) = false;
     return ans;
   }
   void keepFirstActiveLine() {
     size_t firstActiveIdx = 0;
-    for(size_t i=0;i<active.dimY;i++)
-      if(active(0,i)) {
+    for(size_t i=0;i<active.dimX;i++)
+      if(active(i,0)) {
         firstActiveIdx = i;
         break;
       }
     active.setFalse();
-    active(0,firstActiveIdx) = true;
+    active(firstActiveIdx,0) = true;
   }
   void dropFirstActiveLine() {
-    for(size_t i=0;i<active.dimY;i++)
-      if(active(0,i)) {
-        active(0,i) = false;
+    for(size_t i=0;i<active.dimX;i++)
+      if(active(i,0)) {
+        active(i,0) = false;
         break;
       }
+  }
+  void load(std::string path) {
+    MatrixB::load(path);
   }
 };
 
@@ -427,7 +396,7 @@ void fun_cr_comps(size_t noWhiteBlocks, size_t noWhiteSquares) {
   wcout << "Finished (" << noWhiteBlocks << " " << noWhiteSquares << ") composition." << endl;
 }
 
-inline bool exist (const std::string& name) {
+bool exist (const std::string& name) {
   ifstream f(name.c_str());
   if (f.good()) {
     f.close();
@@ -438,7 +407,7 @@ inline bool exist (const std::string& name) {
   }
 }
 
-MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<Line>& posSol, bool& err, size_t incLevel) {
+MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<PossibleCombinations>& posSol, bool& err, size_t incLevel) {
   vector<size_t> dim(2);dim[0] = sol.dimX;dim[1] = sol.dimY;
 
   MatrixB solSet_old(dim[1],dim[0]);solSet_old.setTrue();
@@ -449,35 +418,34 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<Line>& posSol, bool& 
     MatrixB sol_old = sol;
     for(size_t ori=0;ori<2;ori++) {
       for(size_t line=0;line < dim[ori];line++) {
+        PossibleCombinations* possibleCombinations = &(posSol(ori,line));
         if (solSetChange.anyInRow(line)) {
-          err = true;
-          Line* posLines = &(posSol(ori,line));
-          size_t npSol = posLines.getNumberOfLines();
-          size_t dimLine = posLines.possibleLines.dimY;
-          //Define idxDrop vector, init false
-          MatrixB idxDrop(npSol,1);
-          //Loop over all compositions
-          for(size_t i=0;i<npSol;i++) {
-            if(posSol(ori,line).active(i,0)) {
-              for(size_t j=0;j < dimLine;j++) {
-                if (solSet(line,j) & (sol(line,j) ^ posSol(ori,line).possibleLines(i,j))) {
-                  posSol(ori,line).active(i,0) = false;
+          bool allLinesDropped = true;
+          size_t npSol = possibleCombinations->getNumberOfLines();
+          size_t dimLine = possibleCombinations->getDimY();
+          for(size_t i=0 ; i < npSol ; i++) {
+            if(possibleCombinations->active(i,0)) {
+              for(size_t j=0 ; j < dimLine ; j++) {
+                if (solSet(line,j) & (sol(line,j) ^ possibleCombinations->operator ()(i,j))) {
+                  //We drop this combination
+                  possibleCombinations->active(i,0) = false;
                   break;
+                } else {
+                  //We keep at least one combination - No error in this (ori,line)
+                  allLinesDropped = false;
                 }
-              }
-              if(!(idxDrop(i,0))) {
-                err = false;
               }
             }
           }
-          if(err) {
+          if(allLinesDropped) {
+            err = true;
             return sol;
           }
         }
-        MatrixB v1 = posSol(ori,line).allTrueInActiveColumns();
+        MatrixB v1 = possibleCombinations->allTrueInActiveColumns();
         sol.setTrue(line,v1);
         solSet.setTrue(line,v1);
-        MatrixB v2 = posSol(ori,line).allTrueInActiveColumns();
+        MatrixB v2 = possibleCombinations->allFalseInActiveColumns();
         sol.setFalse(line,v2);
         solSet.setTrue(line,v2);
       }
@@ -494,27 +462,27 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<Line>& posSol, bool& 
     //If the latest step brought no news, make a gues (=inception level)
     if(sol_old == sol) {
       size_t min_s = 1e6;
-      size_t minOri = 0;
-      size_t minLine = 0;
+      size_t minOri = 2;
+      size_t minLine = 100;
       for(size_t ori=0;ori<2;ori++)  {
         for(size_t line=0;line<dim[ori];line++) {
-          if (1 < posSol(ori,line).getNumberOfActiveLines() && posSol(ori,line).getNumberOfActiveLines() < min_s) {
-            min_s = posSol(ori,line).getNumberOfActiveLines();
+          size_t nActiveLines = posSol(ori,line).getNumberOfActiveLines();
+          if (1 < nActiveLines && nActiveLines < min_s) {
+            min_s = nActiveLines;
             minOri = ori;
             minLine = line;
           }
         }
       }
-      Matrix<Line> thPosSol = posSol;
+      Matrix<PossibleCombinations> thPosSol = posSol;
       thPosSol(minOri,minLine).keepFirstActiveLine();
-      wstringstream ind;for(size_t i=0;i<incLevel;i++) ind << "--";
-      wcout << ind.str() << "Guess correct solution in O" << minOri << "L" << minLine << " of " << min_s << " solutions there." << endl;
+      wcout << wstring(2*incLevel,L'-') << "Guess correct solution in O" << minOri << "L" << minLine << " of " << min_s << " solutions there." << endl;
       MatrixB thSol = fun_logics_rec(sol,solSet,thPosSol,err,incLevel+1);
       if(!err) {
-        wcout << ind.str() << "Returned from inception level " << incLevel << ". Solved!" << endl;
+        wcout << wstring(2*incLevel,L'-') << "Returned from inception level " << incLevel << ". Solved!" << endl;
         return thSol;
       } else {
-        wcout << ind.str() << "Invalid solution in O" << minOri << "L" << minLine << " found and dropped, remaining " << min_s-1 << " solutions." << endl;
+        wcout << wstring(2*incLevel,L'-') << "Invalid solution in O" << minOri << "L" << minLine << " found and dropped, remaining " << min_s-1 << " solutions." << endl;
         posSol(minOri,minLine).dropFirstActiveLine();
       }
     }
@@ -604,7 +572,7 @@ int main(int argc, const char* argv[]) {
   }
   MatrixB sol(dim[1],dim[0]);
   MatrixB solSet(dim[1],dim[0]);
-  Matrix<Line> posSol(2,maxDim);
+  Matrix<PossibleCombinations> posSol(2,maxDim);
   for(size_t ori=0;ori<2;ori++) {
     for(size_t line=0;line < dim[1-ori];line++) {
       std::vector<uint8_t> black = M[ori]->operator[](line);
@@ -613,11 +581,9 @@ int main(int argc, const char* argv[]) {
       std::stringstream ss;
       ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
       size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
-      MatrixB S(noComps,dim[ori]);
+      PossibleCombinations S(noComps,dim[ori]);
       S.load(ss.str());
-      posSol(ori,line).possibleLines = S;
-      posSol(ori,line).active = MatrixB(S.dimX,1);
-      posSol(ori,line).active.setTrue();
+      posSol(ori,line) = S;
     }
   }
   wcout << "Creation finished!" << endl;
