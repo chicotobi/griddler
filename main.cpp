@@ -14,6 +14,8 @@
 
 #define BOOL char
 
+//#define DEBUG
+
 using namespace std;
 
 template<class V>
@@ -130,6 +132,14 @@ public:
     for(size_t i=0;i<dimX;i++) {
       for(size_t j=0;j<dimY;j++) {
         if(!(b[i*dimY+j])) return false;
+      }
+    }
+    return true;
+  }
+  bool none() const {
+    for(size_t i=0;i<dimX;i++) {
+      for(size_t j=0;j<dimY;j++) {
+        if(b[i*dimY+j]) return false;
       }
     }
     return true;
@@ -341,7 +351,6 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
     counter++;
     MatrixB solSetChange = solSet ^ solSet_old;
     solSet_old = solSet;
-    MatrixB sol_old = sol;
     for(size_t ori=0;ori<2;ori++) {
       err = false;
       for(size_t line=0;line < dim[ori];line++) {
@@ -386,8 +395,47 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
       solSet.transpose();
       solSetChange.transpose();
     }
+
+    //***PRINT ROUTINE
+#ifdef DEBUG
     wcout << endl << "Iteration = " << counter << endl;
-    sol.printBoolToConsole();
+    wcout << wstring(80,L'-') << endl;
+    for(size_t i=0;i<max(dim[0],dim[1]);i++) {
+      wcout << L'I';
+      if(i<dim[0]) {
+        for(size_t j=0;j<dim[1];j++)
+          if(sol(i,j)) {
+            wcout << L'\u2588';
+          } else {
+            wcout << " ";
+          }
+      } else {
+        for(size_t j=0;j<dim[1];j++)
+          wcout << " ";
+      }
+      wcout << L'I';
+      wcout << "\t";
+      if(i<dim[0]) {
+        size_t act = 0;
+        for(size_t j=0;j<active(0,i).size();j++)
+          if (active(0,i)[j])
+            act++;
+        wcout<< act;
+      }
+      wcout << "\t";
+      if(i<dim[1]) {
+        size_t act = 0;
+        for(size_t j=0;j<active(1,i).size();j++)
+          if (active(1,i)[j])
+            act++;
+        wcout<< act;
+      }
+      wcout << endl;
+    }
+    wcout << wstring(80,L'-') << endl;
+#endif
+    //***PRINT ROUTINE
+
     // Check if we are finished
     if(solSet.all()) {
       err = false;
@@ -395,7 +443,7 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
     }
 
     //If the latest step brought no news, make a gues (=inception level)
-    if(sol_old == sol) {
+    if(solSetChange.none()) {
       size_t min_s = 1e6;
       size_t minOri = 2;
       size_t minLine = 100;
@@ -444,28 +492,18 @@ int main(int argc, const char* argv[]) {
   }
   size_t inpNr = atoi(argv[1]);
   wcout << "Solving input number: " << inpNr << endl;
-  std::vector<std::vector<uint8_t> > H;
-  std::vector<std::vector<uint8_t> > V;
+  wcout << "File reading started!" << endl;
   std::vector<uint8_t> tmp;
   stringstream ss;
   ss << "data" << inpNr;
   ifstream myfile(ss.str(), ios::in);
   std::string s;
   getline(myfile,s);
-  size_t dimY = atoi(s.c_str());
-  getline(myfile,s);
   size_t dimX = atoi(s.c_str());
-  for(size_t i=0;i<dimY;i++) {
-    getline(myfile,s);
-    std::stringstream ss(s);
-    std::istream_iterator<std::string> begin(ss);
-    std::istream_iterator<std::string> end;
-    std::vector<std::string> vstrings(begin, end);
-    tmp.clear();
-    for(auto & i : vstrings)
-      tmp.push_back(atoi(i.c_str()));
-    H.push_back(tmp);
-  }
+  getline(myfile,s);
+  size_t dimY = atoi(s.c_str());
+  size_t maxDim = max(dimX,dimY);
+  Matrix<std::vector<uint8_t> > M(2,maxDim);
   for(size_t i=0;i<dimX;i++) {
     getline(myfile,s);
     std::stringstream ss(s);
@@ -475,32 +513,39 @@ int main(int argc, const char* argv[]) {
     tmp.clear();
     for(auto & i : vstrings)
       tmp.push_back(atoi(i.c_str()));
-    V.push_back(tmp);
+    M(0,i) = tmp;
   }
+  for(size_t i=0;i<dimY;i++) {
+    getline(myfile,s);
+    std::stringstream ss(s);
+    std::istream_iterator<std::string> begin(ss);
+    std::istream_iterator<std::string> end;
+    std::vector<std::string> vstrings(begin, end);
+    tmp.clear();
+    for(auto & i : vstrings)
+      tmp.push_back(atoi(i.c_str()));
+    M(1,i) = tmp;
+  }
+  wcout << "File reading finished!" << endl;
 
-  //Creation
   wcout << "Creation started!" << endl;
   std::vector<size_t> dim(2);
   dim[0] = dimX;
   dim[1] = dimY;
-  std::vector<std::vector<std::vector<uint8_t> >* > M;
-  M.push_back(&H);
-  M.push_back(&V);
-  size_t maxDim = max(dimX, dimY);
   for(size_t ori=0;ori<2;ori++) {
-    for(size_t line=0;line < dim[1-ori];line++) {
+    for(size_t line=0;line < dim[ori];line++) {
       std::stringstream ss;
       ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
       if (!exist(ss.str())) {
-        std::vector<uint8_t> black = M[ori]->operator[](line);
+        std::vector<uint8_t> black = M(ori,line);
         uint8_t noWhiteBlocks = black.size() + 1;
-        uint8_t noWhiteSquares = dim[ori] - accumulate(black.begin(),black.end(),0);
+        uint8_t noWhiteSquares = dim[1-ori] - accumulate(black.begin(),black.end(),0);
         size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
         wcout << "Creating sol O" << ori << "L" << line << ", using composition (" << (int) noWhiteBlocks << " " << (int) noWhiteSquares << ") with " << noComps << " compositions." << endl;
         std::stringstream ss2;
         ss2 << "comp_" << (size_t) noWhiteBlocks << "_" << (size_t) noWhiteSquares << ".dat";
         if (!exist(ss2.str())) fun_cr_comps(noWhiteBlocks,noWhiteSquares);
-        MatrixSmallB2 S(noComps,dim[ori]);
+        MatrixSmallB2 S(noComps,dim[1-ori]);
         Matrix<uint8_t> A(noComps,noWhiteBlocks);
         A.load(ss2.str());
         for(size_t k=0;k<noComps;k++) {
@@ -517,26 +562,30 @@ int main(int argc, const char* argv[]) {
       }
     }
   }
-  MatrixB sol(dim[1],dim[0]);
-  MatrixB solSet(dim[1],dim[0]);
+  wcout << "Creation finished!" << endl;
+
+  wcout << "Loading started!" << endl;
+  MatrixB sol(dimX,dimY);
+  MatrixB solSet(dimX,dimY);
   Matrix<MatrixSmallB2> posSol(2,maxDim);
   Matrix<vector<BOOL> > active(2,maxDim);
   for(size_t ori=0;ori<2;ori++) {
-    for(size_t line=0;line < dim[1-ori];line++) {
-      std::vector<uint8_t> black = M[ori]->operator[](line);
+    for(size_t line=0;line < dim[ori];line++) {
+      std::vector<uint8_t> black = M(ori,line);
       uint8_t noWhiteBlocks = black.size() + 1;
-      uint8_t noWhiteSquares = dim[ori] - accumulate(black.begin(),black.end(),0);
+      uint8_t noWhiteSquares = dim[1-ori] - accumulate(black.begin(),black.end(),0);
       size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
-      wcout << "Ori=" << ori << " Line=" << line << endl;
+#ifdef DEBUG
+      wcout << "-- Load Ori=" << ori << " Line=" << line << endl;
+#endif
       std::stringstream ss;
       ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
       posSol(ori,line).load(ss.str());
       active(ori,line).resize(noComps,true);
     }
   }
-  wcout << "Creation finished!" << endl;
+  wcout << "Loading finished!" << endl;
 
-  //Iteration
   wcout << "Iteration started!" << endl;
   bool err = false;
   auto t_start = std::chrono::high_resolution_clock::now();
@@ -547,9 +596,25 @@ int main(int argc, const char* argv[]) {
     wcout << "Returned error :-(" << endl;
     return(1);
   } else {
+    wcout << wstring(80,L'-') << endl;
+    for(size_t i=0;i<max(dim[0],dim[1]);i++) {
+      wcout << L'I';
+      if(i<dim[0]) {
+        for(size_t j=0;j<dim[1];j++)
+          if(sol(i,j)) {
+            wcout << L'\u2588';
+          } else {
+            wcout << " ";
+          }
+      } else {
+        for(size_t j=0;j<dim[1];j++)
+          wcout << " ";
+      }
+      wcout << L'I' << endl;
+    }
+    wcout << wstring(80,L'-') << endl;
     wcout << "Iteration finished!" << endl;
     wcout << "Took " << calcTime << " milliseconds." << endl;
-    sol.printBoolToConsole();
     return 0;
   }
 }
