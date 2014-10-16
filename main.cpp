@@ -12,6 +12,9 @@
 
 #include "boost/dynamic_bitset.hpp"
 
+#include <stdio.h>
+#include <unistd.h>
+
 #define BOOL char
 
 using namespace std;
@@ -134,6 +137,14 @@ public:
     }
     return true;
   }
+  bool none() const {
+    for(size_t i=0;i<dimX;i++) {
+      for(size_t j=0;j<dimY;j++) {
+        if(b[i*dimY+j]) return false;
+      }
+    }
+    return true;
+  }
   bool anyInRow(size_t line) const {
     for(size_t j=0;j<dimY;j++)
       if (this->operator()(line,j))
@@ -141,11 +152,13 @@ public:
     return false;
   }
   void transpose() {
-    MatrixB newMat(dimY,dimX);
+    MatrixB newMat = *this;
+    size_t tmp = dimX;
+    dimX = dimY;
+    dimY = tmp;
     for(size_t i=0;i<dimX;i++)
       for(size_t j=0;j<dimY;j++)
-        newMat(j,i) = this->operator()(i,j);
-    swap(newMat,*this);
+        this->operator()(i,j) = newMat(j,i);
   }
 };
 
@@ -154,7 +167,7 @@ class MatrixSmallB {
   size_t dimX;
   size_t dimY;
 public:
-  inline BOOL& operator()(size_t i, size_t j)      { return b[i*dimY+j];}
+  inline BOOL& operator()(size_t i, size_t j)       { return b[i*dimY+j];}
   inline BOOL  operator()(size_t i, size_t j) const { return b[i*dimY+j];}
   MatrixSmallB() {}
   MatrixSmallB(size_t dimX_, size_t dimY_) : dimX(dimX_), dimY(dimY_) {
@@ -181,7 +194,7 @@ class MatrixSmallB2 {
   size_t dimY;
 public:
   inline boost::dynamic_bitset<>::reference operator()(size_t i, size_t j)       { return b[i*dimY+j];}
-  inline bool                             operator()(size_t i, size_t j) const { return b[i*dimY+j];}
+  inline bool                               operator()(size_t i, size_t j) const { return b[i*dimY+j];}
   MatrixSmallB2() {}
   MatrixSmallB2(size_t dimX_, size_t dimY_) : dimX(dimX_), dimY(dimY_) {
     b.resize(dimX*dimY);
@@ -327,115 +340,6 @@ bool exist (const std::string& name) {
   }
 }
 
-MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSol, Matrix<vector<BOOL> > active, bool& err, size_t incLevel) {
-  vector<size_t> dim(2);dim[0] = sol.getDimX();dim[1] = sol.getDimY();
-
-  MatrixB solSet_old(dim[1],dim[0]);solSet_old.set(true);
-
-  vector<BOOL> allTrueInActiveColumns(max(dim[0],dim[1]),true);
-  vector<BOOL> allFalseInActiveColumns(max(dim[0],dim[1]),true);
-
-  size_t counter = 0;
-
-  while(true) {
-    counter++;
-    MatrixB solSetChange = solSet ^ solSet_old;
-    solSet_old = solSet;
-    MatrixB sol_old = sol;
-    for(size_t ori=0;ori<2;ori++) {
-      err = false;
-      for(size_t line=0;line < dim[ori];line++) {
-        MatrixSmallB2& possibleCombinations = posSol(ori,line);
-        size_t npSol = active(ori,line).size();
-        size_t dimLine = dim[1-ori];
-        if (solSetChange.anyInRow(line)) {
-          bool allLinesDropped = true;
-          for(size_t i=0 ; i < npSol ; i++) {
-            if(active(ori,line)[i]) {
-              for(size_t j=0 ; j < dimLine ; j++) {
-                if (solSet(line,j) & (sol(line,j) ^ possibleCombinations(i,j))) {
-                  active(ori,line)[i] = false;
-                  break;
-                } else {
-                  allLinesDropped = false;
-                }
-              }
-            }
-          }
-          if(allLinesDropped) {
-            err = true;
-            if(err) return sol;
-          }
-        }
-        std::fill(allTrueInActiveColumns .begin(),allTrueInActiveColumns .end(),true);
-        std::fill(allFalseInActiveColumns.begin(),allFalseInActiveColumns.end(),true);
-        for(size_t i=0;i<npSol;i++)
-          if(active(ori,line)[i])
-            for(size_t j=0;j<dimLine;j++)
-              if(possibleCombinations(i,j)) {
-                allFalseInActiveColumns[j] = false;
-              } else {
-                allTrueInActiveColumns[j] = false;
-              }
-        sol.set(line,allTrueInActiveColumns,true);
-        solSet.set(line,allTrueInActiveColumns,true);
-        sol.set(line,allFalseInActiveColumns,false);
-        solSet.set(line,allFalseInActiveColumns,true);
-      }
-      sol.transpose();
-      solSet.transpose();
-      solSetChange.transpose();
-    }
-    wcout << endl << "Iteration = " << counter << endl;
-    sol.printBoolToConsole();
-    // Check if we are finished
-    if(solSet.all()) {
-      err = false;
-      return sol;
-    }
-
-    //If the latest step brought no news, make a gues (=inception level)
-    if(sol_old == sol) {
-      size_t min_s = 1e6;
-      size_t minOri = 2;
-      size_t minLine = 100;
-      for(size_t ori=0;ori<2;ori++)  {
-        for(size_t line=0;line<dim[ori];line++) {
-          size_t nActiveLines = 0;
-          for(size_t i=0 ; i < active(ori,line).size() ; i++ )
-            if(active(ori,line)[i])
-              nActiveLines++;
-          if (1 < nActiveLines && nActiveLines < min_s) {
-            min_s = nActiveLines;
-            minOri = ori;
-            minLine = line;
-          }
-        }
-      }
-
-      Matrix<vector<BOOL> > thActive = active;
-      size_t firstActiveIdx = 0;
-      for(size_t i=0 ; i < thActive(minOri,minLine).size() ; i++ )
-        if(thActive(minOri,minLine)[i]) {
-          firstActiveIdx = i;
-          break;
-        }
-      std::fill(thActive(minOri,minLine).begin(), thActive(minOri,minLine).end(), false);
-      thActive(minOri,minLine)[firstActiveIdx] = true;
-
-      wcout << wstring(2*incLevel,L'-') << "Guess correct solution in O" << minOri << "L" << minLine << " of " << min_s << " solutions there." << endl;
-      MatrixB thSol = fun_logics_rec(sol,solSet,posSol,thActive,err,incLevel+1);
-      if(!err) {
-        wcout << wstring(2*incLevel,L'-') << "Returned from inception level " << incLevel << ". Solved!" << endl;
-        return thSol;
-      } else {
-        wcout << wstring(2*incLevel,L'-') << "Invalid solution in O" << minOri << "L" << minLine << " found and dropped, remaining " << min_s-1 << " solutions." << endl;
-        active(minOri,minLine)[firstActiveIdx] = false;
-      }
-    }
-  }
-}
-
 int main(int argc, const char* argv[]) {
   setlocale(LC_ALL, "");
   if (argc==1) {
@@ -449,13 +353,28 @@ int main(int argc, const char* argv[]) {
   std::vector<uint8_t> tmp;
   stringstream ss;
   ss << "data" << inpNr;
+  if (!exist(ss.str())) {
+    char cCurrentPath[FILENAME_MAX];
+
+    if (!getcwd(cCurrentPath, sizeof(cCurrentPath)))
+    {
+      return errno;
+    }
+
+    cCurrentPath[sizeof(cCurrentPath) - 1] = '\0'; /* not really required */
+
+    wcout << "The current working directory is " << cCurrentPath;
+    wcout << "Data file does not exist." << endl;
+    exit(1);
+  }
   ifstream myfile(ss.str(), ios::in);
   std::string s;
   getline(myfile,s);
-  size_t dimY = atoi(s.c_str());
-  getline(myfile,s);
+  wcout << s.c_str() << endl;
   size_t dimX = atoi(s.c_str());
-  for(size_t i=0;i<dimY;i++) {
+  getline(myfile,s);
+  size_t dimY = atoi(s.c_str());
+  for(size_t i=0;i<dimX;i++) {
     getline(myfile,s);
     std::stringstream ss(s);
     std::istream_iterator<std::string> begin(ss);
@@ -466,7 +385,7 @@ int main(int argc, const char* argv[]) {
       tmp.push_back(atoi(i.c_str()));
     H.push_back(tmp);
   }
-  for(size_t i=0;i<dimX;i++) {
+  for(size_t i=0;i<dimY;i++) {
     getline(myfile,s);
     std::stringstream ss(s);
     std::istream_iterator<std::string> begin(ss);
@@ -488,19 +407,19 @@ int main(int argc, const char* argv[]) {
   M.push_back(&V);
   size_t maxDim = max(dimX, dimY);
   for(size_t ori=0;ori<2;ori++) {
-    for(size_t line=0;line < dim[1-ori];line++) {
+    for(size_t line=0;line < dim[ori];line++) {
       std::stringstream ss;
       ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
       if (!exist(ss.str())) {
         std::vector<uint8_t> black = M[ori]->operator[](line);
         uint8_t noWhiteBlocks = black.size() + 1;
-        uint8_t noWhiteSquares = dim[ori] - accumulate(black.begin(),black.end(),0);
+        uint8_t noWhiteSquares = dim[1-ori] - accumulate(black.begin(),black.end(),0);
         size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
         wcout << "Creating sol O" << ori << "L" << line << ", using composition (" << (int) noWhiteBlocks << " " << (int) noWhiteSquares << ") with " << noComps << " compositions." << endl;
         std::stringstream ss2;
         ss2 << "comp_" << (size_t) noWhiteBlocks << "_" << (size_t) noWhiteSquares << ".dat";
         if (!exist(ss2.str())) fun_cr_comps(noWhiteBlocks,noWhiteSquares);
-        MatrixSmallB2 S(noComps,dim[ori]);
+        MatrixSmallB2 S(noComps,dim[1-ori]);
         Matrix<uint8_t> A(noComps,noWhiteBlocks);
         A.load(ss2.str());
         for(size_t k=0;k<noComps;k++) {
@@ -517,39 +436,158 @@ int main(int argc, const char* argv[]) {
       }
     }
   }
-  MatrixB sol(dim[1],dim[0]);
-  MatrixB solSet(dim[1],dim[0]);
   Matrix<MatrixSmallB2> posSol(2,maxDim);
-  Matrix<vector<BOOL> > active(2,maxDim);
+  vector<Matrix<vector<BOOL> > > vActive;
+  vActive.push_back(Matrix<vector<BOOL> >(2,maxDim));
   for(size_t ori=0;ori<2;ori++) {
-    for(size_t line=0;line < dim[1-ori];line++) {
+    for(size_t line=0;line < dim[ori];line++) {
       std::vector<uint8_t> black = M[ori]->operator[](line);
       uint8_t noWhiteBlocks = black.size() + 1;
-      uint8_t noWhiteSquares = dim[ori] - accumulate(black.begin(),black.end(),0);
+      uint8_t noWhiteSquares = dim[1-ori] - accumulate(black.begin(),black.end(),0);
       size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
       wcout << "Ori=" << ori << " Line=" << line << endl;
       std::stringstream ss;
       ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
       posSol(ori,line).load(ss.str());
-      active(ori,line).resize(noComps,true);
+      vActive.back()(ori,line).resize(noComps,true);
     }
   }
   wcout << "Creation finished!" << endl;
 
   //Iteration
   wcout << "Iteration started!" << endl;
-  bool err = false;
+
+  vector<MatrixB> vSolution;
+  vSolution.push_back(MatrixB(dimX,dimY));
+
+  vector<MatrixB> vSolutionIsSet;
+  vSolutionIsSet.push_back(MatrixB(dimX,dimY));
+
+  //  vector<MatrixB> vSolutionIsSetOld;
+  //  vSolutionIsSetOld.push_back(MatrixB(dim[1],dim[0]));
+  //  vSolutionIsSetOld[0].set(true);
+  MatrixB solutionIsSetOld(dimX,dimY);
+  solutionIsSetOld.set(true);
+  MatrixB solutionIsSetChange(dimX,dimY);
+
+  vector<BOOL> allTrueInActiveColumns(maxDim,true);
+  vector<BOOL> allFalseInActiveColumns(maxDim,true);
+
+  struct guessTriple {
+    size_t nActiveLines;
+    size_t ori;
+    size_t line;
+    size_t firstActiveIdx;
+  };
+
+  vector<guessTriple> vGuessTriple;
+
   auto t_start = std::chrono::high_resolution_clock::now();
-  sol = fun_logics_rec(sol,solSet,posSol,active,err,0);
-  auto t_end = std::chrono::high_resolution_clock::now();
-  double calcTime = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
-  if (err) {
-    wcout << "Returned error :-(" << endl;
-    return(1);
-  } else {
-    wcout << "Iteration finished!" << endl;
-    wcout << "Took " << calcTime << " milliseconds." << endl;
-    sol.printBoolToConsole();
-    return 0;
+  while(true) {
+    //Assign current correct pointers at the current incLevel;
+    Matrix<vector<BOOL> >* active = &vActive.back();
+    MatrixB* solution = &vSolution.back();
+    MatrixB* solutionIsSet = &vSolutionIsSet.back();
+
+    solutionIsSetChange = *solutionIsSet ^ solutionIsSetOld;
+    solutionIsSetOld = *solutionIsSet;
+
+    for(size_t ori=0;ori<2;ori++) {
+      for(size_t line=0;line < dim[ori];line++) {
+        MatrixSmallB2& possibleCombinations = posSol(ori,line);
+        size_t npSol = active->operator ()(ori,line).size();
+        size_t dimLine = dim[1-ori];
+        if (solutionIsSetChange.anyInRow(line)) {
+          bool allLinesDropped = true;
+          for(size_t i=0 ; i < npSol ; i++) {
+            if(active->operator ()(ori,line)[i]) {
+              for(size_t j=0 ; j < dimLine ; j++) {
+                if (solutionIsSet->operator ()(line,j) & (solution->operator ()(line,j) ^ possibleCombinations(i,j))) {
+                  active->operator ()(ori,line)[i] = false;
+                  break;
+                } else {
+                  allLinesDropped = false;
+                }
+              }
+            }
+          }
+          if(allLinesDropped) {
+            if (vActive.size() == 1) {
+              wcout << "Error in data!" << endl;
+              exit(1);
+            }
+            wcout << wstring(2*(vActive.size()-1),L'-') << "Invalid solution in O" << vGuessTriple.back().ori << "L" << vGuessTriple.back().line << " found and dropped, remaining " << ((vGuessTriple.back().nActiveLines) - 1) << " solutions." << endl;
+            vActive.pop_back();
+            vSolution.pop_back();
+            vSolutionIsSet.pop_back();
+            active = &vActive.back();
+            solution = &vSolution.back();
+            solutionIsSet = &vSolutionIsSet.back();
+            active->operator ()(vGuessTriple.back().ori,vGuessTriple.back().line)[vGuessTriple.back().firstActiveIdx] = false;
+            vGuessTriple.pop_back();
+            solutionIsSetChange = *solutionIsSet ^ solutionIsSetOld;
+          }
+        }
+        std::fill(allTrueInActiveColumns .begin(),allTrueInActiveColumns .end(),true);
+        std::fill(allFalseInActiveColumns.begin(),allFalseInActiveColumns.end(),true);
+        for(size_t i=0;i<npSol;i++)
+          if(active->operator ()(ori,line)[i])
+            for(size_t j=0;j<dimLine;j++)
+              if(possibleCombinations(i,j)) {
+                allFalseInActiveColumns[j] = false;
+              } else {
+                allTrueInActiveColumns[j] = false;
+              }
+        solution->set(line,allTrueInActiveColumns,true);
+        solutionIsSet->set(line,allTrueInActiveColumns,true);
+        solution->set(line,allFalseInActiveColumns,false);
+        solutionIsSet->set(line,allFalseInActiveColumns,true);
+      }
+      solution->transpose();
+      solutionIsSet->transpose();
+      solutionIsSetChange.transpose();
+    }
+    solution->printBoolToConsole();
+    // Check if we are finished
+    if(solutionIsSet->all()) break;
+
+    //If the latest step brought no news, make a guess
+    if(solutionIsSetChange.none()) {
+      guessTriple tmp;
+      tmp.nActiveLines = 1e6;
+      for(size_t ori=0;ori<2;ori++)  {
+        for(size_t line=0;line<dim[ori];line++) {
+          size_t nActiveLines = 0;
+          for(size_t i=0 ; i < active->operator ()(ori,line).size() ; i++ )
+            if(active->operator ()(ori,line)[i])
+              nActiveLines++;
+          if (1 < nActiveLines && nActiveLines < tmp.nActiveLines) {
+            tmp.nActiveLines = nActiveLines;
+            tmp.ori = ori;
+            tmp.line = line;
+          }
+        }
+      }
+      vector<BOOL> activeCombinations = active->operator ()(tmp.ori, tmp.line);
+      for(size_t i=0 ; i < activeCombinations.size() ; i++ )
+        if(activeCombinations[i]) {
+          tmp.firstActiveIdx = i;
+          break;
+        }
+      vActive.push_back(vActive.back());
+      vSolution.push_back(vSolution.back());
+      vSolutionIsSet.push_back(vSolutionIsSet.back());
+      std::fill(vActive.back()(tmp.ori,tmp.line).begin(), vActive.back()(tmp.ori,tmp.line).end(), false);
+      vActive.back()(tmp.ori,tmp.line)[tmp.firstActiveIdx] = true;
+      wcout << wstring(2*(vActive.size()-1),L'-') << "Guess correct solution in O" << tmp.ori << "L" << tmp.line << " of " << tmp.nActiveLines << " solutions there." << endl;
+      vGuessTriple.push_back(tmp);
+    }
   }
+  auto t_end = std::chrono::high_resolution_clock::now();
+
+  double calcTime = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
+  wcout << "Iteration finished!" << endl;
+  wcout << "Took " << calcTime << " microseconds." << endl;
+  vSolution[0].printBoolToConsole();
+  return 0;
 }
