@@ -230,102 +230,6 @@ size_t alg_n_k(size_t n_, size_t k_) {
   return (size_t) ans;
 }
 
-void fun_cr_comps(size_t noWhiteBlocks, size_t noWhiteSquares) {
-  size_t noComp1 = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1);
-  size_t noComp2 = alg_n_k(noWhiteSquares-1,noWhiteBlocks-2);
-  size_t noComp3 = alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
-  size_t noComps = noComp1 + 2*noComp2 + noComp3;
-  wcout << "Starting (" << noWhiteBlocks << " " << noWhiteSquares << ") composition, this will give " << noComps << " compositions." << endl;
-
-  size_t i = 0;
-  Matrix<uint8_t> A(noComps,noWhiteBlocks);
-
-  if (noComp1 > 0) {
-    int n = noWhiteSquares;
-    int k = noWhiteBlocks;
-    std::vector<int> a(k,0);
-    a[0] = n-k;
-    int t = n - k;
-    int h = 0;
-    for(size_t j=0;j<noWhiteBlocks;j++)
-      A(i,j) = a[j]+1;
-    i++;
-    while(i<noComp1) {
-      if (1 < t) h = 0;
-      h++;
-      t = a[h-1];
-      a[h-1] = 0;
-      a[0] = t - 1;
-      a[h]++;
-      for(size_t j=0;j<noWhiteBlocks;j++)
-        A(i,j) = a[j]+1;
-      i++;
-    }
-  }
-  if (noComp2 > 0) {
-    int n = noWhiteSquares;
-    int k = noWhiteBlocks-1;
-    std::vector<int> a(k,0);
-    a[0] = n-k;
-    int t = n - k;
-    int h = 0;
-    for(size_t j=0;j<noWhiteBlocks-1;j++)
-      A(i,j) = a[j]+1;
-    A(i,noWhiteBlocks-1) = 0;
-    i++;
-    A(i,0) = 0;
-    for(size_t j=1;j<noWhiteBlocks;j++)
-      A(i,j) = a[j-1]+1;
-    i++;
-    while(i<noComp1+2*noComp2) {
-      if (1 < t) h = 0;
-      h++;
-      t = a[h-1];
-      a[h-1] = 0;
-      a[0] = t - 1;
-      a[h] += 1;
-      for(size_t j=0;j<noWhiteBlocks-1;j++)
-        A(i,j) = a[j]+1;
-      A(i,noWhiteBlocks-1) = 0;
-      i++;
-      A(i,0) = 0;
-      for(size_t j=1;j<noWhiteBlocks;j++)
-        A(i,j) = a[j-1]+1;
-      i++;
-    }
-  }
-  if (noComp3 > 0) {
-    int n = noWhiteSquares;
-    int k = noWhiteBlocks-2;
-    std::vector<int> a(k,0);
-    a[0] = n-k;
-    int t = n - k;
-    int h = 0;
-    A(i,0) = 0;
-    for(size_t j=1;j<noWhiteBlocks-1;j++)
-      A(i,j) = a[j-1]+1;
-    A(i,noWhiteBlocks-1) = 0;
-    i++;
-    while(i<noComp1+2*noComp2+noComp3) {
-      if (1 < t) h = 0;
-      h++;
-      t = a[h-1];
-      a[h-1] = 0;
-      a[0] = t - 1;
-      a[h] += 1;
-      A(i,0) = 0;
-      for(size_t j=1;j<noWhiteBlocks-1;j++)
-        A(i,j) = a[j-1]+1;
-      A(i,noWhiteBlocks-1) = 0;
-      i++;
-    }
-  }
-  std::stringstream ss;
-  ss << "comp_" << noWhiteBlocks << "_" << noWhiteSquares << ".dat";
-  A.write(ss.str());
-  wcout << "Finished (" << noWhiteBlocks << " " << noWhiteSquares << ") composition." << endl;
-}
-
 bool exist (const std::string& name) {
   ifstream f(name.c_str());
   if (f.good()) {
@@ -337,7 +241,87 @@ bool exist (const std::string& name) {
   }
 }
 
-MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSol, Matrix<vector<BOOL> > active, bool& err, size_t incLevel) {
+class CombinationCircle {
+  size_t pos;
+  size_t noComp1;
+  size_t noComp2;
+  size_t noComp3;
+  size_t noWhiteBlocks;
+  size_t noWhiteSquares;
+  size_t n;
+  size_t k;
+  size_t t;
+  size_t h;
+  std::vector<uint8_t> black;
+  std::vector<uint8_t> a;
+public:
+  std::vector<BOOL> vec;
+  CombinationCircle(std::vector<uint8_t> black_, size_t dim) {
+    black = black_;
+    noWhiteBlocks = black.size() + 1;
+    noWhiteSquares = dim - accumulate(black.begin(),black.end(),0);
+    pos = 0;
+    noComp1 = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1);
+    noComp2 = alg_n_k(noWhiteSquares-1,noWhiteBlocks-2);
+    noComp3 = alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
+    a = std::vector<uint8_t>(noWhiteBlocks,0);
+    n = noWhiteSquares;
+    vec = std::vector<BOOL>(dim,false);
+  }
+
+  void next() {
+    uint8_t* pt;
+
+    if(noComp1 > 0 && pos < noComp1) {
+      k = noWhiteBlocks;
+      pt = &a[0];
+    } else if(noComp2 > 0 && pos < noComp1 + noComp2) {
+      k = noWhiteBlocks-1;
+      pt = &a[0];
+      a[noWhiteBlocks-1]=0;
+    } else if(noComp2 > 0 && pos < noComp1 + 2 * noComp2) {
+      k = noWhiteBlocks-1;
+      pt = &a[1];
+      a[0]=0;
+    } else if(noComp3 > 0 && pos < noComp1 + 2 * noComp2 + noComp3) {
+      k = noWhiteBlocks-2;
+      pt = &a[1];
+      a[0]=0;
+      a[noWhiteBlocks-1]=0;
+    } else {
+      wcout << "Error: Too many combinations requested." << endl;
+      exit(1);
+    }
+    if(pos==0 || pos==noComp1 || pos==noComp1+noComp2 || pos==noComp1+2*noComp2) {
+      *pt = n-k+1;
+      for(size_t j=1;j<k;j++)
+        *(pt+j) = 1;
+      t = n - k;
+      h = 0;
+      pos++;
+    } else {
+      if (1 < t) h = 0;
+      h++;
+      t = *(pt+h-1)-1;
+      *(pt+h-1) = 1;
+      *pt = t;
+      (*(pt+h))++;
+      pos++;
+    }
+    size_t pos2 = 0;
+    //std::fill(vec.begin(),vec.end(),false);
+    for(size_t l=0;l<black.size();l++) {
+      for (size_t m = 0 ; m < a[l] ; m++)
+        vec[pos2++] = false;
+      for (size_t m = 0 ; m < black[l] ; m++)
+        vec[pos2++] = true;
+    }
+    for(size_t m=pos2;m<vec.size();m++)
+      vec[m]=false;
+  }
+};
+
+MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<vector<uint8_t> >& M, Matrix<vector<BOOL> > active, bool& err, size_t incLevel) {
   vector<size_t> dim(2);dim[0] = sol.getDimX();dim[1] = sol.getDimY();
 
   MatrixB solSet_old(dim[1],dim[0]);solSet_old.set(true);
@@ -354,15 +338,17 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
     for(size_t ori=0;ori<2;ori++) {
       err = false;
       for(size_t line=0;line < dim[ori];line++) {
-        MatrixSmallB2& possibleCombinations = posSol(ori,line);
         size_t npSol = active(ori,line).size();
         size_t dimLine = dim[1-ori];
         if (solSetChange.anyInRow(line)) {
           bool allLinesDropped = true;
+          CombinationCircle cc(M(ori,line),dim[1-ori]);
           for(size_t i=0 ; i < npSol ; i++) {
+            //create this lines
+            cc.next();
             if(active(ori,line)[i]) {
               for(size_t j=0 ; j < dimLine ; j++) {
-                if (solSet(line,j) & (sol(line,j) ^ possibleCombinations(i,j))) {
+                if (solSet(line,j) & (sol(line,j) ^ cc.vec[j])) {
                   active(ori,line)[i] = false;
                   break;
                 } else {
@@ -378,14 +364,17 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
         }
         std::fill(allTrueInActiveColumns .begin(),allTrueInActiveColumns .end(),true);
         std::fill(allFalseInActiveColumns.begin(),allFalseInActiveColumns.end(),true);
-        for(size_t i=0;i<npSol;i++)
+        CombinationCircle cc(M(ori,line),dim[1-ori]);
+        for(size_t i=0;i<npSol;i++) {
+          cc.next();
           if(active(ori,line)[i])
             for(size_t j=0;j<dimLine;j++)
-              if(possibleCombinations(i,j)) {
+              if(cc.vec[j]) {
                 allFalseInActiveColumns[j] = false;
               } else {
                 allTrueInActiveColumns[j] = false;
               }
+        }
         sol.set(line,allTrueInActiveColumns,true);
         solSet.set(line,allTrueInActiveColumns,true);
         sol.set(line,allFalseInActiveColumns,false);
@@ -472,7 +461,7 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
       thActive(minOri,minLine)[firstActiveIdx] = true;
 
       wcout << wstring(2*incLevel,L'-') << "Guess correct solution in O" << minOri << "L" << minLine << " of " << min_s << " solutions there." << endl;
-      MatrixB thSol = fun_logics_rec(sol,solSet,posSol,thActive,err,incLevel+1);
+      MatrixB thSol = fun_logics_rec(sol,solSet,M,thActive,err,incLevel+1);
       if(!err) {
         wcout << wstring(2*incLevel,L'-') << "Returned from inception level " << incLevel << ". Solved!" << endl;
         return thSol;
@@ -526,48 +515,46 @@ int main(int argc, const char* argv[]) {
       tmp.push_back(atoi(i.c_str()));
     M(1,i) = tmp;
   }
-  wcout << "File reading finished!" << endl;
-
-  wcout << "Creation started!" << endl;
   std::vector<size_t> dim(2);
   dim[0] = dimX;
   dim[1] = dimY;
-  for(size_t ori=0;ori<2;ori++) {
-    for(size_t line=0;line < dim[ori];line++) {
-      std::stringstream ss;
-      ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
-      if (!exist(ss.str())) {
-        std::vector<uint8_t> black = M(ori,line);
-        uint8_t noWhiteBlocks = black.size() + 1;
-        uint8_t noWhiteSquares = dim[1-ori] - accumulate(black.begin(),black.end(),0);
-        size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
-        wcout << "Creating sol O" << ori << "L" << line << ", using composition (" << (int) noWhiteBlocks << " " << (int) noWhiteSquares << ") with " << noComps << " compositions." << endl;
-        std::stringstream ss2;
-        ss2 << "comp_" << (size_t) noWhiteBlocks << "_" << (size_t) noWhiteSquares << ".dat";
-        if (!exist(ss2.str())) fun_cr_comps(noWhiteBlocks,noWhiteSquares);
-        MatrixSmallB2 S(noComps,dim[1-ori]);
-        Matrix<uint8_t> A(noComps,noWhiteBlocks);
-        A.load(ss2.str());
-        for(size_t k=0;k<noComps;k++) {
-          size_t pos = 0;
-          for(size_t l=0;l<black.size();l++) {
-            pos += A(k,l);
-            for (size_t m = 0 ; m < black[l] ; m++) {
-              S(k,pos++) = true;
-            }
-          }
-        }
-        S.write(ss.str());
-        wcout << "Finished sol O" << ori << "L" << line << ", using composition (" << (int)  noWhiteBlocks << " " << (int)  noWhiteSquares << ") with " << noComps << " compositions." << endl;
-      }
-    }
-  }
-  wcout << "Creation finished!" << endl;
+  wcout << "File reading finished!" << endl;
+
+  //  wcout << "Creation started!" << endl;
+  //  for(size_t ori=0;ori<2;ori++) {
+  //    for(size_t line=0;line < dim[ori];line++) {
+  //      std::stringstream ss;
+  //      ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
+  //      if (!exist(ss.str())) {
+  //        std::vector<uint8_t> black = M(ori,line);
+  //        uint8_t noWhiteBlocks = black.size() + 1;
+  //        uint8_t noWhiteSquares = dim[1-ori] - accumulate(black.begin(),black.end(),0);
+  //        size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
+  //        wcout << "Creating sol O" << ori << "L" << line << ", using composition (" << (int) noWhiteBlocks << " " << (int) noWhiteSquares << ") with " << noComps << " compositions." << endl;
+  //        std::stringstream ss2;
+  //        ss2 << "comp_" << (size_t) noWhiteBlocks << "_" << (size_t) noWhiteSquares << ".dat";
+  //        if (!exist(ss2.str())) fun_cr_comps(noWhiteBlocks,noWhiteSquares);
+  //        MatrixSmallB2 S(noComps,dim[1-ori]);
+  //        Matrix<uint8_t> A(noComps,noWhiteBlocks);
+  //        A.load(ss2.str());
+  //        for(size_t k=0;k<noComps;k++) {
+  //          size_t pos = 0;
+  //          for(size_t l=0;l<black.size();l++) {
+  //            pos += A(k,l);
+  //            for (size_t m = 0 ; m < black[l] ; m++) {
+  //              S(k,pos++) = true;
+  //            }
+  //          }
+  //        }
+  //        S.write(ss.str());
+  //        wcout << "Finished sol O" << ori << "L" << line << ", using composition (" << (int)  noWhiteBlocks << " " << (int)  noWhiteSquares << ") with " << noComps << " compositions." << endl;
+  //      }
+  //    }
+  //  }
+  //  wcout << "Creation finished!" << endl;
 
   wcout << "Loading started!" << endl;
-  MatrixB sol(dimX,dimY);
-  MatrixB solSet(dimX,dimY);
-  Matrix<MatrixSmallB2> posSol(2,maxDim);
+  //    Matrix<MatrixSmallB2> posSol(2,maxDim);
   Matrix<vector<BOOL> > active(2,maxDim);
   for(size_t ori=0;ori<2;ori++) {
     for(size_t line=0;line < dim[ori];line++) {
@@ -575,21 +562,23 @@ int main(int argc, const char* argv[]) {
       uint8_t noWhiteBlocks = black.size() + 1;
       uint8_t noWhiteSquares = dim[1-ori] - accumulate(black.begin(),black.end(),0);
       size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
-#ifdef DEBUG
-      wcout << "-- Load Ori=" << ori << " Line=" << line << endl;
-#endif
-      std::stringstream ss;
-      ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
-      posSol(ori,line).load(ss.str());
+      //  #ifdef DEBUG
+      //        wcout << "-- Load Ori=" << ori << " Line=" << line << endl;
+      //  #endif
+      //        std::stringstream ss;
+      //        ss << inpNr << "/ori" << ori << "_line" << line << ".dat";
+      //        posSol(ori,line).load(ss.str());
       active(ori,line).resize(noComps,true);
     }
   }
   wcout << "Loading finished!" << endl;
 
   wcout << "Iteration started!" << endl;
+  MatrixB sol(dimX,dimY);
+  MatrixB solSet(dimX,dimY);
   bool err = false;
   auto t_start = std::chrono::high_resolution_clock::now();
-  sol = fun_logics_rec(sol,solSet,posSol,active,err,0);
+  sol = fun_logics_rec(sol,solSet,M,active,err,0);
   auto t_end = std::chrono::high_resolution_clock::now();
   double calcTime = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
   if (err) {

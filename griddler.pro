@@ -1,6 +1,6 @@
 TEMPLATE = app
 CONFIG  -= qt
-CONFIG -= debug
+CONFIG += debug
 debug {
 QMAKE_CXXFLAGS   += -std=c++11 -pg
 QMAKE_CFLAGS   += -std=c++11 -pg
