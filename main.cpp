@@ -164,7 +164,7 @@ class MatrixSmallB {
   size_t dimX;
   size_t dimY;
 public:
-  inline BOOL& operator()(size_t i, size_t j)      { return b[i*dimY+j];}
+  inline BOOL& operator()(size_t i, size_t j)       { return b[i*dimY+j];}
   inline BOOL  operator()(size_t i, size_t j) const { return b[i*dimY+j];}
   MatrixSmallB() {}
   MatrixSmallB(size_t dimX_, size_t dimY_) : dimX(dimX_), dimY(dimY_) {
@@ -355,15 +355,16 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
       err = false;
       for(size_t line=0;line < dim[ori];line++) {
         MatrixSmallB2& possibleCombinations = posSol(ori,line);
-        size_t npSol = active(ori,line).size();
+        vector<BOOL>& activeCombinations = active(ori,line);
+        size_t npSol = activeCombinations.size();
         size_t dimLine = dim[1-ori];
         if (solSetChange.anyInRow(line)) {
           bool allLinesDropped = true;
           for(size_t i=0 ; i < npSol ; i++) {
-            if(active(ori,line)[i]) {
+            if(activeCombinations[i]) {
               for(size_t j=0 ; j < dimLine ; j++) {
                 if (solSet(line,j) & (sol(line,j) ^ possibleCombinations(i,j))) {
-                  active(ori,line)[i] = false;
+                  activeCombinations[i] = false;
                   break;
                 } else {
                   allLinesDropped = false;
@@ -379,7 +380,7 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
         std::fill(allTrueInActiveColumns .begin(),allTrueInActiveColumns .end(),true);
         std::fill(allFalseInActiveColumns.begin(),allFalseInActiveColumns.end(),true);
         for(size_t i=0;i<npSol;i++)
-          if(active(ori,line)[i])
+          if(activeCombinations[i])
             for(size_t j=0;j<dimLine;j++)
               if(possibleCombinations(i,j)) {
                 allFalseInActiveColumns[j] = false;
@@ -422,7 +423,7 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
             act++;
         wcout<< act;
       }
-      wcout << "\t";
+      wcout << "\t\t";
       if(i<dim[1]) {
         size_t act = 0;
         for(size_t j=0;j<active(1,i).size();j++)
