@@ -7,14 +7,15 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <time.h>
 
-#include "omp.h"
+#include <omp.h>
 
 #include "boost/dynamic_bitset.hpp"
 
 #define BOOL char
 
-//#define DEBUG
+#define DEBUG
 
 using namespace std;
 
@@ -321,7 +322,7 @@ void fun_cr_comps(size_t noWhiteBlocks, size_t noWhiteSquares) {
     }
   }
   std::stringstream ss;
-  ss << "comp_" << noWhiteBlocks << "_" << noWhiteSquares << ".dat";
+  ss << "comp/comp_" << noWhiteBlocks << "_" << noWhiteSquares << ".dat";
   A.write(ss.str());
   wcout << "Finished (" << noWhiteBlocks << " " << noWhiteSquares << ") composition." << endl;
 }
@@ -337,6 +338,7 @@ bool exist (const std::string& name) {
   }
 }
 
+
 MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSol, Matrix<vector<BOOL> > active, bool& err, size_t incLevel) {
   vector<size_t> dim(2);dim[0] = sol.getDimX();dim[1] = sol.getDimY();
 
@@ -347,68 +349,85 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
 
   size_t counter = 0;
 
+  time_t start,stop;
+
   while(true) {
     counter++;
+    time(&start);
     MatrixB solSetChange = solSet ^ solSet_old;
     solSet_old = solSet;
     for(size_t ori=0;ori<2;ori++) {
-      err = false;
       for(size_t line=0;line < dim[ori];line++) {
         MatrixSmallB2& possibleCombinations = posSol(ori,line);
         vector<BOOL>& activeCombinations = active(ori,line);
         size_t npSol = activeCombinations.size();
         size_t dimLine = dim[1-ori];
+        size_t i,j;
         if (solSetChange.anyInRow(line)) {
           bool allLinesDropped = true;
-          for(size_t i=0 ; i < npSol ; i++) {
-            if(activeCombinations[i]) {
-              for(size_t j=0 ; j < dimLine ; j++) {
-                if (solSet(line,j) & (sol(line,j) ^ possibleCombinations(i,j))) {
-                  activeCombinations[i] = false;
-                  break;
-                } else {
-                  allLinesDropped = false;
+#pragma omp parallel shared(solSet,sol,possibleCombinations,activeCombinations,allLinesDropped) private(i,j)
+          {
+#pragma omp for schedule(static,16)
+            for(i=0 ; i < npSol ; i++) {
+              if(activeCombinations[i]) {
+                for(j=0 ; j < dimLine ; j++) {
+                  if (solSet(line,j) & (sol(line,j) ^ possibleCombinations(i,j))) {
+                    activeCombinations[i] = false;
+                    break;
+                  } else {
+                    allLinesDropped = false;
+                  }
                 }
               }
             }
           }
           if(allLinesDropped) {
             err = true;
-            if(err) return sol;
+            return sol;
           }
         }
         std::fill(allTrueInActiveColumns .begin(),allTrueInActiveColumns .end(),true);
         std::fill(allFalseInActiveColumns.begin(),allFalseInActiveColumns.end(),true);
-        for(size_t i=0;i<npSol;i++)
-          if(activeCombinations[i])
-            for(size_t j=0;j<dimLine;j++)
-              if(possibleCombinations(i,j)) {
-                allFalseInActiveColumns[j] = false;
-              } else {
-                allTrueInActiveColumns[j] = false;
-              }
+#pragma omp parallel shared(activeCombinations,possibleCombinations,allFalseInActiveColumns,allTrueInActiveColumns) private(i,j)
+        {
+#pragma omp for schedule(static,16)
+          for(i=0;i<npSol;i++)
+            if(activeCombinations[i])
+              for(j=0;j<dimLine;j++)
+                if(possibleCombinations(i,j)) {
+                  allFalseInActiveColumns[j] = false;
+                } else {
+                  allTrueInActiveColumns[j] = false;
+                }
+        }
         sol.set(line,allTrueInActiveColumns,true);
         solSet.set(line,allTrueInActiveColumns,true);
         sol.set(line,allFalseInActiveColumns,false);
         solSet.set(line,allFalseInActiveColumns,true);
       }
+      //if(err) return sol;
       sol.transpose();
       solSet.transpose();
       solSetChange.transpose();
     }
+    time(&stop);
 
     //***PRINT ROUTINE
 #ifdef DEBUG
-    wcout << endl << "Iteration = " << counter << endl;
+    wcout << endl << "Iteration = " << counter << " Iteration time: " << difftime(stop,start) << endl;
     wcout << wstring(80,L'-') << endl;
     for(size_t i=0;i<max(dim[0],dim[1]);i++) {
       wcout << L'I';
       if(i<dim[0]) {
         for(size_t j=0;j<dim[1];j++)
-          if(sol(i,j)) {
-            wcout << L'\u2588';
+          if(solSet(i,j)) {
+            if(sol(i,j)) {
+              wcout << L'\u2588';
+            } else {
+              wcout << " ";
+            }
           } else {
-            wcout << " ";
+            wcout << "#";
           }
       } else {
         for(size_t j=0;j<dim[1];j++)
@@ -443,7 +462,7 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
       return sol;
     }
 
-    //If the latest step brought no news, make a gues (=inception level)
+    //If the latest step brought no news, make a guess (=inception level)
     if(solSetChange.none()) {
       size_t min_s = 1e6;
       size_t minOri = 2;
@@ -471,14 +490,13 @@ MatrixB fun_logics_rec(MatrixB sol, MatrixB solSet, Matrix<MatrixSmallB2>& posSo
         }
       std::fill(thActive(minOri,minLine).begin(), thActive(minOri,minLine).end(), false);
       thActive(minOri,minLine)[firstActiveIdx] = true;
-
-      wcout << wstring(2*incLevel,L'-') << "Guess correct solution in O" << minOri << "L" << minLine << " of " << min_s << " solutions there." << endl;
+      wcout << wstring(2*(incLevel+1),L'-') << "Guess correct solution in O" << minOri << "L" << minLine << " of " << min_s << " solutions there." << endl;
       MatrixB thSol = fun_logics_rec(sol,solSet,posSol,thActive,err,incLevel+1);
       if(!err) {
-        wcout << wstring(2*incLevel,L'-') << "Returned from inception level " << incLevel << ". Solved!" << endl;
+        wcout << wstring(2*(incLevel+1),L'-') << "Returned from inception level " << incLevel+1 << ". Solved!" << endl;
         return thSol;
       } else {
-        wcout << wstring(2*incLevel,L'-') << "Invalid solution in O" << minOri << "L" << minLine << " found and dropped, remaining " << min_s-1 << " solutions." << endl;
+        wcout << wstring(2*(incLevel+1),L'-') << "Invalid solution in O" << minOri << "L" << minLine << " found and dropped, remaining " << min_s-1 << " solutions." << endl;
         active(minOri,minLine)[firstActiveIdx] = false;
       }
     }
@@ -544,7 +562,7 @@ int main(int argc, const char* argv[]) {
         size_t noComps = alg_n_k(noWhiteSquares-1,noWhiteBlocks-1)+2*alg_n_k(noWhiteSquares-1,noWhiteBlocks-2)+alg_n_k(noWhiteSquares-1,noWhiteBlocks-3);
         wcout << "Creating sol O" << ori << "L" << line << ", using composition (" << (int) noWhiteBlocks << " " << (int) noWhiteSquares << ") with " << noComps << " compositions." << endl;
         std::stringstream ss2;
-        ss2 << "comp_" << (size_t) noWhiteBlocks << "_" << (size_t) noWhiteSquares << ".dat";
+        ss2 << "comp/comp_" << (size_t) noWhiteBlocks << "_" << (size_t) noWhiteSquares << ".dat";
         if (!exist(ss2.str())) fun_cr_comps(noWhiteBlocks,noWhiteSquares);
         MatrixSmallB2 S(noComps,dim[1-ori]);
         Matrix<uint8_t> A(noComps,noWhiteBlocks);
@@ -593,6 +611,7 @@ int main(int argc, const char* argv[]) {
   sol = fun_logics_rec(sol,solSet,posSol,active,err,0);
   auto t_end = std::chrono::high_resolution_clock::now();
   double calcTime = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
+  wcout << "Iteration finished!" << endl;
   if (err) {
     wcout << "Returned error :-(" << endl;
     return(1);
@@ -614,7 +633,6 @@ int main(int argc, const char* argv[]) {
       wcout << L'I' << endl;
     }
     wcout << wstring(80,L'-') << endl;
-    wcout << "Iteration finished!" << endl;
     wcout << "Took " << calcTime << " milliseconds." << endl;
     return 0;
   }
